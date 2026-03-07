@@ -1,0 +1,208 @@
+﻿@page
+@model AFG_Livescoring.Pages.Squads.ManageModel
+@{
+    ViewData["Title"] = "Squads";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Gestion des squads</h2>
+            <div class="text-muted">
+                Compétition : <strong>@Model.CompetitionName</strong> (Id: @Model.CompetitionId)
+                @if (Model.IsTraining)
+                {
+                    <span class="badge bg-info text-dark ms-2">ENTRAÎNEMENT</span>
+                }
+                else
+                {
+                    <span class="badge bg-dark ms-2">COMPÉTITION</span>
+                }
+            </div>
+        </div>
+
+        <a class="btn btn-outline-secondary" href="/Leaderboard?competitionId=@Model.CompetitionId">Retour</a>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Message"]</div>
+    }
+
+    <div class="card mb-3">
+        <div class="card-body">
+
+            @if (Model.HasScores)
+            {
+                <div class="alert alert-info">
+                    Des scores existent déjà. Les squads sont verrouillés.
+                </div>
+            }
+
+            <!-- Génération auto (toujours dispo, mais surtout utile en compétition) -->
+            <form method="post" class="d-flex gap-2 flex-wrap align-items-center">
+                <input type="hidden" name="competitionId" value="@Model.CompetitionId" />
+
+                <label class="form-label mb-0">Taille squad</label>
+
+                <select class="form-select" style="width:160px" name="squadSize" @(Model.HasScores ? "disabled" : null)>
+                    @for (int s = Model.MinSquadSize; s <= Model.MaxSquadSize; s++)
+                    {
+                        var isSelected = (s == 4 && 4 >= Model.MinSquadSize && 4 <= Model.MaxSquadSize)
+                        || (Model.MinSquadSize == s && !(4 >= Model.MinSquadSize && 4 <= Model.MaxSquadSize));
+
+                        <option value="@s" selected="@(isSelected ? "selected" : null)">@s joueur(s)</option>
+                    }
+                </select>
+
+                <button type="submit"
+                        class="btn btn-primary"
+                        asp-page-handler="Generate"
+                        disabled="@(Model.HasScores)">
+                    Générer squads
+                </button>
+
+                <button type="submit"
+                        class="btn btn-outline-danger"
+                        asp-page-handler="Clear"
+                        disabled="@(Model.HasScores)"
+                        onclick="return confirm('Supprimer les squads + affectations pour cette compétition ?');">
+                    Réinitialiser
+                </button>
+            </form>
+
+            <div class="small text-muted mt-2">
+                Taille autorisée : <strong>@Model.MinSquadSize</strong> à <strong>@Model.MaxSquadSize</strong> joueur(s) par squad.
+                <br />
+                Génère des squads et affecte chaque joueur (Round) à un squad. StartHole = 1,2,3...
+            </div>
+
+            <!-- ✅ NEW : mode manuel (uniquement entraînement) -->
+            @if (Model.IsTraining)
+            {
+                <hr class="my-3" />
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1">Entraînement — Sélection manuelle des squads</h5>
+                        <div class="text-muted small">
+                            Crée des squads puis affecte les joueurs au squad souhaité. (Max @Model.MaxSquadSize joueur(s) par squad)
+                        </div>
+                    </div>
+
+                    <form method="post" asp-page-handler="CreateSquad">
+                        <input type="hidden" name="competitionId" value="@Model.CompetitionId" />
+                        <button type="submit" class="btn btn-success" disabled="@(Model.HasScores)">
+                            + Créer un squad
+                        </button>
+                    </form>
+                </div>
+
+                <div class="mt-3">
+                    <h6 class="mb-2">Joueurs non affectés</h6>
+
+                    @if (!Model.UnassignedRounds.Any())
+                    {
+                        <div class="text-muted small">Aucun joueur non affecté.</div>
+                    }
+                    else if (!Model.Squads.Any())
+                    {
+                        <div class="alert alert-warning">
+                            Aucun squad n’existe. Clique sur <strong>Créer un squad</strong> d’abord.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Joueur</th>
+                                        <th style="width:220px;">Squad</th>
+                                        <th style="width:140px;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var r in Model.UnassignedRounds)
+                                    {
+                                        <tr>
+                                            <td>@r.Player!.FirstName @r.Player!.LastName (RoundId: @r.Id)</td>
+                                            <td>
+                                                <form method="post" asp-page-handler="Assign" class="d-flex gap-2">
+                                                    <input type="hidden" name="competitionId" value="@Model.CompetitionId" />
+                                                    <input type="hidden" name="roundId" value="@r.Id" />
+
+                                                    <select class="form-select form-select-sm" name="squadId">
+                                                        @foreach (var s in Model.Squads)
+                                                        {
+                                                            <option value="@s.Id">@s.Name</option>
+                                                        }
+                                                    </select>
+
+                                                    <button type="submit" class="btn btn-primary btn-sm" disabled="@(Model.HasScores)">
+                                                        Affecter
+                                                    </button>
+                                                </form>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="text-muted small">—</span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <h4>Squads existants</h4>
+
+    @if (!Model.Squads.Any())
+    {
+        <div class="text-muted">Aucun squad pour cette compétition.</div>
+    }
+    else
+    {
+        @foreach (var s in Model.Squads)
+        {
+            <div class="card mb-2">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="fw-bold">@s.Name</div>
+                        <div class="text-muted">StartHole : <strong>@s.StartHole</strong></div>
+                    </div>
+
+                    @if (!s.Rounds.Any())
+                    {
+                        <div class="text-muted small mt-2">Aucun joueur dans ce squad.</div>
+                    }
+                    else
+                    {
+                        <ul class="mb-0 mt-2">
+                            @foreach (var r in s.Rounds)
+                            {
+                                <li class="d-flex justify-content-between align-items-center">
+                                    <span>@r.Player!.FirstName @r.Player!.LastName (RoundId: @r.Id)</span>
+
+                                    @if (Model.IsTraining)
+                                    {
+                                        <form method="post" asp-page-handler="Remove" class="m-0">
+                                            <input type="hidden" name="competitionId" value="@Model.CompetitionId" />
+                                            <input type="hidden" name="roundId" value="@r.Id" />
+                                            <button type="submit" class="btn btn-outline-danger btn-sm" disabled="@(Model.HasScores)">
+                                                Retirer
+                                            </button>
+                                        </form>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>

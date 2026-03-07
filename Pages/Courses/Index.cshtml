@@ -1,0 +1,50 @@
+﻿@page
+@model AFG_Livescoring.Pages.Courses.IndexModel
+@{
+    ViewData["Title"] = "Parcours";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h2 class="mb-0">Parcours</h2>
+        <a class="btn btn-outline-secondary" href="/Competitions">Retour</a>
+    </div>
+
+    <form method="post" asp-page-handler="Add" class="row g-2 mt-3">
+        <div class="col-md-8">
+            <input class="form-control" asp-for="NewCourseName" placeholder="Nom du parcours" />
+        </div>
+        <div class="col-md-4">
+            <button class="btn btn-primary w-100" type="submit">Créer</button>
+        </div>
+        <div class="text-danger">@Html.ValidationSummary()</div>
+    </form>
+
+    <table class="table table-striped table-bordered align-middle mt-3">
+        <thead class="table-dark">
+            <tr>
+                <th>Nom</th>
+                <th style="width:220px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in Model.Courses)
+            {
+                <tr>
+                    <td>@c.Name</td>
+                    <td class="d-flex gap-2">
+                        <a class="btn btn-sm btn-primary" href="/Courses/Holes?courseId=@c.Id">Trous / Par</a>
+
+                        <form method="post" asp-page-handler="Delete">
+                            <input type="hidden" name="id" value="@c.Id" />
+                            <button class="btn btn-sm btn-danger" type="submit"
+                                    onclick="return confirm('Supprimer le parcours et ses trous ?');">
+                                Supprimer
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

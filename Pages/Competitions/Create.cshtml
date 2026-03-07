@@ -1,0 +1,33 @@
+﻿@page
+@model AFG_Livescoring.Pages.Competitions.CreateModel
+
+<div class="container mt-4">
+
+    <h3>Créer une compétition</h3>
+
+    <form method="post">
+
+        <div class="mb-3">
+            <label asp-for="Competition.Name" class="form-label">Nom</label>
+            <input asp-for="Competition.Name" class="form-control" />
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Competition.ScoringMode" class="form-label">Mode</label>
+            <select asp-for="Competition.ScoringMode" class="form-select">
+                <option value="0">Compétition (scoring par squad uniquement)</option>
+                <option value="1">Entraînement (scoring individuel autorisé)</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn btn-primary">
+            Créer la compétition
+        </button>
+
+        <a href="/Competitions" class="btn btn-secondary">
+            Annuler
+        </a>
+
+    </form>
+
+</div>

@@ -1,0 +1,269 @@
+﻿@page
+@model AFG_Livescoring.Pages.Squads.ScoreModel
+@{
+    ViewData["Title"] = "Scoring Squad";
+}
+
+<div class="container mt-4">
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Error"]</div>
+    }
+    @if (TempData["Info"] != null)
+    {
+        <div class="alert alert-info">@TempData["Info"]</div>
+    }
+
+    <!-- Header page -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-1">Scoring Squad</h3>
+            <div class="text-muted">
+                Compétition : <strong>@Model.Competition?.Name</strong>
+                — Squad : <strong>@Model.Squad?.Name</strong>
+            </div>
+        </div>
+
+        <a class="btn btn-outline-secondary"
+           href="/Leaderboard?competitionId=@Model.CompetitionId">
+            Retour Live
+        </a>
+    </div>
+
+    @if (Model.Edit && !Model.IsSquadLocked)
+    {
+        <div class="alert alert-info">
+            <strong>Mode correction (organisateur)</strong> : tu peux corriger si besoin.
+            <div class="mt-2">
+                <a class="btn btn-outline-success"
+                   href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@Model.CurrentHole">
+                    Terminer correction (re-verrouillage auto si complet)
+                </a>
+            </div>
+        </div>
+    }
+
+    @if (Model.IsSquadLocked)
+    {
+        <div class="alert alert-warning">
+            <strong>Squad verrouillé.</strong> La saisie est bloquée.
+        </div>
+    }
+
+    <!-- Bandeau Trou / Par / Etat + Navigation -->
+    <div class="card mb-3">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-bold fs-4">
+                    Trou @Model.CurrentHole
+                    @if (Model.CurrentPar.HasValue)
+                    {
+                        <span class="text-muted fs-6">— Par @Model.CurrentPar</span>
+                    }
+                </div>
+
+                <div class="mt-1">
+                    @if (Model.IsHoleValidated)
+                    {
+                        <span class="badge bg-success">VALIDÉ</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-warning text-dark">EN COURS</span>
+                    }
+
+                    @if (Model.IsSquadLocked)
+                    {
+                        <span class="badge bg-dark ms-2">SQUAD VERROUILLÉ</span>
+                    }
+                    @if (Model.Edit && !Model.IsSquadLocked)
+                    {
+                        <span class="badge bg-info text-dark ms-2">MODE CORRECTION</span>
+                    }
+                </div>
+
+                <div class="text-muted small mt-2">
+                    StartHole : <strong>@Model.Squad?.StartHole</strong>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                @if (Model.CurrentHole > 1)
+                {
+                    <a class="btn btn-outline-primary"
+                       href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole - 1)&edit=@Model.Edit">
+                        ← Trou précédent
+                    </a>
+                }
+
+                @if (Model.CurrentHole < 18)
+                {
+                    <a class="btn btn-outline-primary"
+                       href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole + 1)&edit=@Model.Edit">
+                        Trou suivant →
+                    </a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Card Joueurs -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="mb-3">Joueurs</h5>
+
+            <!-- FORM PRINCIPAL (Valider / Corriger) -->
+            <form method="post">
+                <input type="hidden" asp-for="CompetitionId" />
+                <input type="hidden" asp-for="SquadId" />
+                <input type="hidden" asp-for="CurrentHole" />
+                <input type="hidden" asp-for="Edit" />
+
+                @foreach (var p in Model.Players)
+                {
+                    <input type="hidden"
+                           name="Scores[@p.RoundId]"
+                           id="input-@p.RoundId"
+                           value="@p.Strokes" />
+
+                    <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">
+                        <div class="fw-bold">@p.PlayerName</div>
+
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    onclick="decrement(@p.RoundId)"
+                                    @(Model.IsHoleValidated || Model.IsSquadLocked ? "disabled" : null)>
+                                -
+                            </button>
+
+                            <span id="score-@p.RoundId" class="fw-bold fs-5">
+                                @p.Strokes
+                            </span>
+
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    onclick="increment(@p.RoundId)"
+                                    @(Model.IsHoleValidated || Model.IsSquadLocked ? "disabled" : null)>
+                                +
+                            </button>
+                        </div>
+                    </div>
+                }
+
+                <div class="mt-3">
+
+                    @if (Model.IsSquadLocked)
+                    {
+                        <div class="text-muted">
+                            Saisie désactivée (squad verrouillé). Utilise le bouton <strong>Déverrouiller</strong> si tu es organisateur.
+                        </div>
+                    }
+                    else if (Model.IsHoleValidated)
+                    {
+                        <div class="alert alert-warning mt-3 mb-2">
+                            Ce trou est déjà validé. Pour modifier, clique sur <strong>Corriger ce trou</strong>.
+                        </div>
+
+                        <div class="d-flex flex-column gap-2 mt-2">
+                            <!-- Corriger -->
+                            <button type="submit"
+                                    formaction="?handler=Correct"
+                                    class="btn btn-outline-danger w-100"
+                                    onclick="return confirm('Corriger ce trou ? Les scores existants seront supprimés.');">
+                                Corriger ce trou
+                            </button>
+
+                            <!-- Suivant / Fin -->
+                            @if (Model.CurrentHole >= 18)
+                            {
+                                <a class="btn btn-primary w-100"
+                                   href="/Leaderboard?competitionId=@Model.CompetitionId">
+                                    Fin (retour Live)
+                                </a>
+                            }
+                            else
+                            {
+                                <a class="btn btn-primary w-100"
+                                   href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole + 1)&edit=@Model.Edit">
+                                    Trou suivant
+                                </a>
+                            }
+
+                            <button type="submit" class="btn btn-success w-100" disabled>
+                                Valider le trou
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="submit"
+                                class="btn btn-success w-100 mt-3"
+                                onclick="return confirmValidate();">
+                            Valider le trou
+                        </button>
+                    }
+                </div>
+            </form>
+
+            <!-- FORM ORGANISATEUR : UNLOCK -->
+            @if (Model.IsSquadLocked)
+            {
+                <form method="post"
+                      asp-page="/Squads/Score"
+                      asp-page-handler="Unlock"
+                      asp-route-competitionId="@Model.CompetitionId"
+                      asp-route-squadId="@Model.SquadId"
+                      asp-route-hole="@Model.CurrentHole"
+                      class="mt-3">
+
+                    <button type="submit"
+                            class="btn btn-outline-danger w-100"
+                            onclick="return confirm('Déverrouiller le squad ? (mode correction)');">
+                        Déverrouiller (organisateur)
+                    </button>
+                </form>
+            }
+        </div>
+    </div>
+
+</div>
+
+<script>
+    function setScore(roundId, newValue) {
+        if (newValue < 0) newValue = 0;
+        if (newValue > 10) newValue = 10;
+
+        const display = document.getElementById("score-" + roundId);
+        display.innerText = newValue;
+
+        const input = document.getElementById("input-" + roundId);
+        input.value = newValue;
+    }
+
+    function increment(roundId) {
+        const display = document.getElementById("score-" + roundId);
+        let value = parseInt(display.innerText);
+        setScore(roundId, value + 1);
+    }
+
+    function decrement(roundId) {
+        const display = document.getElementById("score-" + roundId);
+        let value = parseInt(display.innerText);
+        setScore(roundId, value - 1);
+    }
+
+    function confirmValidate() {
+        const isLastHole = @(Model.IsLastHole ? "true" : "false");
+
+        if (!isLastHole) return true;
+
+        return confirm(
+            "ATTENTION : vous êtes au trou 18.\n\n" +
+            "Si tous les joueurs du squad ont 18 trous remplis, le squad sera verrouillé automatiquement.\n" +
+            "Après verrouillage, la saisie sera bloquée (déverrouillage possible par l'organisateur).\n\n" +
+            "Confirmer la validation ?"
+        );
+    }
+</script>

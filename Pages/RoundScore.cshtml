@@ -1,0 +1,254 @@
+﻿@page
+@model AFG_Livescoring.Pages.RoundScoreModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Score";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+            <h2 class="mb-1">Saisie des scores</h2>
+            <div class="text-muted">
+                <div><strong>Compétition :</strong> @Model.Round?.Competition?.Name</div>
+                <div><strong>Joueur :</strong> @Model.Round?.Player?.FirstName @Model.Round?.Player?.LastName</div>
+                @if (Model.TotalCoursePar > 0)
+                {
+                    <div><strong>Par total parcours :</strong> @Model.TotalCoursePar</div>
+                }
+            </div>
+        </div>
+        <a class="btn btn-outline-secondary" href="/Leaderboard?competitionId=@Model.Round?.CompetitionId">Retour</a>
+    </div>
+
+    <!-- ✅ Navigation trous (sticky) -->
+    <div class="sticky-top bg-white border rounded p-2 mb-3" style="z-index: 1020;">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+            <button type="button" class="btn btn-outline-secondary" onclick="gotoPrevHole()">
+                ← Trou précédent
+            </button>
+
+            <div class="text-center flex-grow-1">
+                <div class="fw-bold" id="navCurrentHole">Trou —</div>
+                <div class="small text-muted" id="navCurrentPar">Par —</div>
+            </div>
+
+            <button type="button" class="btn btn-outline-secondary" onclick="gotoNextHole()">
+                Trou suivant →
+            </button>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        Astuce : mets <strong>0</strong> pour un trou non joué (le score sera supprimé).
+    </div>
+
+    <form method="post">
+        <input type="hidden" asp-for="RoundId" />
+
+        <div class="d-flex flex-column gap-2">
+            @for (int i = 0; i < 18; i++)
+            {
+                var holeNumber = i + 1;
+                var par = (Model.HolePars != null && Model.HolePars.Count == 18) ? Model.HolePars[i] : 0;
+
+                <div class="card" id="hole-@holeNumber" data-hole="@holeNumber">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">
+                                Trou @holeNumber
+                                @if (par > 0)
+                                {
+                                    <span class="text-muted">— Par @par</span>
+                                }
+                            </div>
+                            <div class="text-muted small">0 = non joué</div>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2">
+                            <!-- Bouton - -->
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-lg"
+                                    onclick="stepScore(@i, -1)">
+                                −
+                            </button>
+
+                            <!-- Champ score -->
+                            <input type="number"
+                                   class="form-control text-center"
+                                   style="width:90px; font-size:1.2rem;"
+                                   asp-for="HoleScores[i]"
+                                   min="0"
+                                   max="10"
+                                   inputmode="numeric"
+                                   oninput="clampInput(this); updateTotals();"
+                                   onblur="clampInput(this); updateTotals();" />
+
+                            <!-- Bouton + -->
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-lg"
+                                    onclick="stepScore(@i, +1)">
+                                +
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- ✅ Footer Totaux en temps réel -->
+        <div class="sticky-bottom bg-white border rounded p-3 mt-3" style="z-index: 1020;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <div class="fw-bold">Total : <span id="totalStrokes">0</span></div>
+                    <div class="small text-muted">
+                        Trous joués : <span id="holesPlayed">0</span>
+                        @if (Model.TotalCoursePar > 0)
+                        {
+                            <span> | Par joué : <span id="parPlayed">0</span></span>
+                        }
+                    </div>
+                </div>
+
+                <div class="text-end">
+                    <div class="fw-bold">
+                        ±Par : <span id="toPar">—</span>
+                    </div>
+                    <div class="small text-muted">Calcul instantané</div>
+                </div>
+            </div>
+
+            <!-- Barre d'action -->
+            <div class="d-grid mt-3">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    Enregistrer
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    const holePars = @Html.Raw(JsonSerializer.Serialize(Model.HolePars ?? new List<int>()));
+    const hasPars = Array.isArray(holePars) && holePars.length === 18 && holePars.some(p => p > 0);
+
+    function clamp(val, min, max) {
+        return Math.max(min, Math.min(max, val));
+    }
+
+    function clampInput(el) {
+        let v = parseInt(el.value || "0", 10);
+        if (isNaN(v)) v = 0;
+        if (v < 0) v = 0;
+        if (v > 10) v = 10;
+        el.value = v;
+    }
+
+    function stepScore(index, delta) {
+        const input = document.querySelector(`input[name="HoleScores[${index}]"]`);
+        if (!input) return;
+
+        let v = parseInt(input.value || "0", 10);
+        if (isNaN(v)) v = 0;
+
+        v = clamp(v + delta, 0, 10);
+        input.value = v;
+
+        updateTotals();
+    }
+
+    function updateTotals() {
+        let total = 0;
+        let holesPlayed = 0;
+        let parPlayed = 0;
+
+        for (let i = 0; i < 18; i++) {
+            const input = document.querySelector(`input[name="HoleScores[${i}]"]`);
+            if (!input) continue;
+
+            let v = parseInt(input.value || "0", 10);
+            if (isNaN(v)) v = 0;
+
+            if (v > 0) {
+                total += v;
+                holesPlayed += 1;
+                if (hasPars) parPlayed += (holePars[i] || 0);
+            }
+        }
+
+        document.getElementById("totalStrokes").textContent = total.toString();
+        document.getElementById("holesPlayed").textContent = holesPlayed.toString();
+
+        const parPlayedEl = document.getElementById("parPlayed");
+        if (parPlayedEl) parPlayedEl.textContent = parPlayed.toString();
+
+        const toParEl = document.getElementById("toPar");
+        if (!hasPars || holesPlayed === 0) {
+            toParEl.textContent = "—";
+            return;
+        }
+
+        const toPar = total - parPlayed;
+        toParEl.textContent = (toPar > 0 ? "+" : "") + toPar.toString();
+    }
+
+    // --- Navigation trous (scroll intelligent) ---
+    function getCurrentHoleNumber() {
+        const cards = document.querySelectorAll('[id^="hole-"]');
+        if (!cards || cards.length === 0) return 1;
+
+        let bestHole = 1;
+        let bestDist = Number.POSITIVE_INFINITY;
+
+        const viewportMid = window.innerHeight * 0.35;
+
+        cards.forEach(card => {
+            const rect = card.getBoundingClientRect();
+            const dist = Math.abs(rect.top - viewportMid);
+            const hole = parseInt(card.getAttribute("data-hole") || "1", 10);
+
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestHole = hole;
+            }
+        });
+
+        return clamp(bestHole, 1, 18);
+    }
+
+    function updateNavLabel() {
+        const hole = getCurrentHoleNumber();
+        const par = hasPars ? (holePars[hole - 1] || 0) : 0;
+
+        document.getElementById("navCurrentHole").textContent = "Trou " + hole;
+        document.getElementById("navCurrentPar").textContent = (par > 0) ? ("Par " + par) : "Par —";
+    }
+
+    function scrollToHole(hole) {
+        hole = clamp(hole, 1, 18);
+        const el = document.getElementById("hole-" + hole);
+        if (!el) return;
+
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        setTimeout(updateNavLabel, 250);
+    }
+
+    function gotoPrevHole() {
+        const hole = getCurrentHoleNumber();
+        scrollToHole(hole - 1);
+    }
+
+    function gotoNextHole() {
+        const hole = getCurrentHoleNumber();
+        scrollToHole(hole + 1);
+    }
+
+    window.addEventListener("scroll", () => {
+        // léger, suffisant
+        updateNavLabel();
+    }, { passive: true });
+
+    // Init
+    updateTotals();
+    updateNavLabel();
+</script>
