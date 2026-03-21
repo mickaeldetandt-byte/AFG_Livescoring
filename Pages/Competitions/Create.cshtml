@@ -1,33 +1,76 @@
 ﻿@page
 @model AFG_Livescoring.Pages.Competitions.CreateModel
+@{
+    ViewData["Title"] = "Créer une compétition";
+}
 
 <div class="container mt-4">
+    <h2 class="mb-4">Créer une compétition</h2>
 
-    <h3>Créer une compétition</h3>
+    <form method="post" class="card shadow-sm">
+        <div class="card-body">
 
-    <form method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-        <div class="mb-3">
-            <label asp-for="Competition.Name" class="form-label">Nom</label>
-            <input asp-for="Competition.Name" class="form-control" />
+            <div class="mb-3">
+                <label asp-for="Competition.Name" class="form-label">Nom</label>
+                <input asp-for="Competition.Name" class="form-control" />
+                <span asp-validation-for="Competition.Name" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Competition.Date" class="form-label">Date</label>
+                <input asp-for="Competition.Date" type="date" class="form-control" />
+                <span asp-validation-for="Competition.Date" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Competition.Mode" class="form-label">Mode</label>
+                <select asp-for="Competition.Mode" class="form-select">
+                    <option value="Competition">Compétition</option>
+                    <option value="Training">Entraînement</option>
+                </select>
+                <div class="form-text">
+                    Compétition = règles strictes. Entraînement = squads modifiables et reset autorisé.
+                </div>
+                <span asp-validation-for="Competition.Mode" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Competition.CompetitionType" class="form-label">Format de jeu</label>
+                <select asp-for="Competition.CompetitionType" class="form-select"
+                        asp-items="Html.GetEnumSelectList<AFG_Livescoring.Models.CompetitionType>()">
+                </select>
+                <div class="form-text">
+                    Choisis le format sportif de la compétition.
+                </div>
+                <span asp-validation-for="Competition.CompetitionType" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Competition.ScoringMode" class="form-label">Mode de scoring</label>
+                <select asp-for="Competition.ScoringMode" class="form-select"
+                        asp-items="Html.GetEnumSelectList<AFG_Livescoring.Models.ScoringMode>()">
+                </select>
+                <div class="form-text">
+                    SquadOnly = saisie par squad. IndividualAllowed = plus flexible.
+                </div>
+                <span asp-validation-for="Competition.ScoringMode" class="text-danger"></span>
+            </div>
+
+            <div class="form-check mb-4">
+                <input asp-for="Competition.IsActive" class="form-check-input" />
+                <label asp-for="Competition.IsActive" class="form-check-label">Active</label>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Créer</button>
+                <a asp-page="/Competitions/Index" class="btn btn-outline-secondary">Annuler</a>
+            </div>
         </div>
-
-        <div class="mb-3">
-            <label asp-for="Competition.ScoringMode" class="form-label">Mode</label>
-            <select asp-for="Competition.ScoringMode" class="form-select">
-                <option value="0">Compétition (scoring par squad uniquement)</option>
-                <option value="1">Entraînement (scoring individuel autorisé)</option>
-            </select>
-        </div>
-
-        <button type="submit" class="btn btn-primary">
-            Créer la compétition
-        </button>
-
-        <a href="/Competitions" class="btn btn-secondary">
-            Annuler
-        </a>
-
     </form>
-
 </div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

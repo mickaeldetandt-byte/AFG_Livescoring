@@ -14,5 +14,8 @@
         public Squad? Squad { get; set; }
 
         public bool IsLocked { get; set; } = false;
+
+        // ✅ Accès invité sécurisé
+        public string? PublicToken { get; set; }
     }
 }

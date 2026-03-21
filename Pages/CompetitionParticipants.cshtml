@@ -1,118 +1,173 @@
 ﻿@page
 @model AFG_Livescoring.Pages.CompetitionParticipantsModel
 @{
-    ViewData["Title"] = "Participants";
+    ViewData["Title"] = "Participants compétition";
 }
 
 <div class="container mt-4">
-    <h2 class="mb-2">Participants</h2>
 
-    <div class="mb-3 text-muted">
-        Compétition : <strong>@Model.Competition?.Name</strong> (ID @Model.CompetitionId)
-        @if (Model.IsTraining)
-        {
-            <span class="badge bg-info text-dark ms-2">ENTRAÎNEMENT</span>
-        }
-        else
-        {
-            <span class="badge bg-dark ms-2">COMPÉTITION</span>
-        }
-    </div>
-
-    @if (!Model.IsTraining)
+    @if (TempData["Error"] != null)
     {
-        <div class="alert alert-info">
-            En compétition, la saisie individuelle est désactivée. Utilise <strong>Score Squad</strong> depuis le Live.
+        <div class="alert alert-warning">
+            @TempData["Error"]
         </div>
     }
 
-    <div class="card mb-4">
+    @if (Model.Competition == null)
+    {
+        <div class="alert alert-danger">
+            Compétition introuvable.
+        </div>
+        return;
+    }
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Participants - @Model.Competition.Name</h2>
+            <div class="text-muted">
+                Date : @Model.Competition.Date.ToString("dd/MM/yyyy")
+            </div>
+        </div>
+
+        <a class="btn btn-outline-secondary"
+           href="/Competitions">
+            Retour
+        </a>
+    </div>
+
+    <div class="mb-3 d-flex flex-wrap gap-2">
+        @if (Model.IsTraining)
+        {
+            <span class="badge bg-info text-dark">Mode entraînement</span>
+        }
+        else
+        {
+            <span class="badge bg-primary">Mode compétition</span>
+        }
+
+        @if (Model.HasStarted)
+        {
+            <span class="badge bg-warning text-dark">Session démarrée</span>
+        }
+        else
+        {
+            <span class="badge bg-secondary">Non démarrée</span>
+        }
+
+        @if (Model.HasSquads)
+        {
+            <span class="badge bg-dark">Squads générés</span>
+        }
+    </div>
+
+    @if (!Model.CanEditParticipants && !string.IsNullOrWhiteSpace(Model.LockMessage))
+    {
+        <div class="alert alert-info">
+            @Model.LockMessage
+        </div>
+    }
+
+    <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <form method="post" asp-page-handler="Add" class="row g-3">
-                <input type="hidden" asp-for="CompetitionId" />
+            <h4 class="mb-3">Ajouter un participant</h4>
 
-                <div class="col-md-8">
-                    <label class="form-label">Ajouter un joueur</label>
-                    <select class="form-select" asp-for="SelectedPlayerId">
-                        <option value="0">-- Sélectionner --</option>
-                        @foreach (var p in Model.Players)
-                        {
-                            <option value="@p.Id">@p.LastName @p.FirstName</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="col-md-4 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">Ajouter</button>
-                </div>
-            </form>
-
-            @if (!ViewData.ModelState.IsValid)
+            @if (Model.CanEditParticipants)
             {
-                <div class="text-danger mt-2">
-                    @foreach (var err in ViewData.ModelState.Values.SelectMany(v => v.Errors))
-                    {
-                        <div>@err.ErrorMessage</div>
-                    }
+                <form method="post" asp-page-handler="Add" class="row g-2 align-items-end">
+                    <input type="hidden" asp-for="CompetitionId" />
+
+                    <div class="col-md-8">
+                        <label asp-for="SelectedPlayerId" class="form-label">Joueur</label>
+                        <select asp-for="SelectedPlayerId" class="form-select">
+                            <option value="0">-- Sélectionner un joueur --</option>
+                            @foreach (var p in Model.Players)
+                            {
+                                <option value="@p.Id">@p.FirstName @p.LastName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">
+                            Ajouter
+                        </button>
+                    </div>
+                </form>
+            }
+            else
+            {
+                <div class="alert alert-secondary mb-0">
+                    Ajout de participants désactivé.
                 </div>
             }
         </div>
     </div>
 
-    <h4>Participants actuels</h4>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h4 class="mb-3">Liste des participants</h4>
 
-    <table class="table table-striped table-bordered align-middle">
-        <thead class="table-dark">
-            <tr>
-                <th style="width:80px;">RoundId</th>
-                <th>Joueur</th>
-                <th style="width:200px;">Action</th>
-            </tr>
-        </thead>
-        <tbody>
-            @if (!Model.Rounds.Any())
+            @if (Model.Rounds == null || !Model.Rounds.Any())
             {
-                <tr><td colspan="3" class="text-center text-muted">Aucun participant</td></tr>
+                <div class="alert alert-info mb-0">
+                    Aucun participant pour cette compétition.
+                </div>
             }
             else
             {
-                foreach (var r in Model.Rounds)
-                {
-                    <tr>
-                        <td>@r.Id</td>
-                        <td>@(r.Player != null ? $"{r.Player.FirstName} {r.Player.LastName}" : $"PlayerId={r.PlayerId}")</td>
-                        <td>
-                            <div class="d-flex gap-2">
-                                @if (Model.IsTraining)
-                                {
-                                    <a class="btn btn-primary btn-sm"
-                                       href="/RoundScore?roundId=@r.Id">
-                                        Score
-                                    </a>
-                                }
-                                else
-                                {
-                                    <button class="btn btn-secondary btn-sm" disabled
-                                            title="En compétition : saisie via Score Squad uniquement">
-                                        Score
-                                    </button>
-                                }
-
-                                <form method="post"
-                                      asp-page-handler="Remove"
-                                      asp-route-roundId="@r.Id">
-                                    <button type="submit"
-                                            class="btn btn-danger btn-sm">
-                                        Retirer
-                                    </button>
-                                </form>
-                            </div>
-                        </td>
-                    </tr>
-                }
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Joueur</th>
+                                <th style="width: 180px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var round in Model.Rounds)
+                            {
+                                <tr>
+                                    <td>
+                                        @if (round.Player != null)
+                                        {
+                                            @($"{round.Player.FirstName} {round.Player.LastName}")
+                                        }
+                                        else
+                                        {
+                                            @($"PlayerId={round.PlayerId}")
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (Model.CanEditParticipants)
+                                        {
+                                            <form method="post"
+                                                  asp-page-handler="Remove"
+                                                  asp-route-roundId="@round.Id"
+                                                  class="m-0">
+                                                <input type="hidden" asp-for="CompetitionId" />
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-danger"
+                                                        onclick="return confirm('Supprimer ce participant ?');">
+                                                    Supprimer
+                                                </button>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    disabled>
+                                                Verrouillé
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             }
-        </tbody>
-    </table>
+        </div>
+    </div>
 
-    <a class="btn btn-outline-secondary" href="/Competitions">Retour</a>
 </div>

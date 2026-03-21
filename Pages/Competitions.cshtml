@@ -1,158 +1,264 @@
 ﻿@page
 @model AFG_Livescoring.Pages.CompetitionsModel
+@using AFG_Livescoring.Models
 @{
     ViewData["Title"] = "Compétitions";
 }
 
 <div class="container mt-4">
 
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">Compétitions</h2>
+        <a asp-page="/Competitions/Results" class="btn btn-outline-dark">
+            Voir les résultats
+        </a>
+    </div>
+
     @if (TempData["Error"] != null)
     {
-        <div class="alert alert-warning mt-3">
+        <div class="alert alert-danger">
             @TempData["Error"]
         </div>
     }
 
-    <!-- Titre + bouton Parcours -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0">Compétitions</h2>
-        <a class="btn btn-outline-primary" href="/Courses/Index">Parcours</a>
-    </div>
+    @if (TempData["Info"] != null)
+    {
+        <div class="alert alert-info">
+            @TempData["Info"]
+        </div>
+    }
 
-    <!-- Form ajout -->
-    <div class="card mb-4">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success">
+            @TempData["SuccessMessage"]
+        </div>
+    }
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <strong>Créer une compétition / un entraînement</strong>
+        </div>
         <div class="card-body">
-            <form method="post" asp-page-handler="Add" class="row g-3">
+            <form method="post" asp-page-handler="Add">
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
-                <div class="col-md-6">
-                    <label class="form-label">Nom</label>
-                    <input asp-for="NewCompetition.Name" class="form-control" />
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label asp-for="NewCompetition.Name" class="form-label">Nom</label>
+                        <input asp-for="NewCompetition.Name" class="form-control" />
+                        <span asp-validation-for="NewCompetition.Name" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label asp-for="NewCompetition.Date" class="form-label">Date</label>
+                        <input asp-for="NewCompetition.Date" type="date" class="form-control" />
+                        <span asp-validation-for="NewCompetition.Date" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label asp-for="NewCompetition.CourseId" class="form-label">Parcours</label>
+                        <select asp-for="NewCompetition.CourseId" class="form-select">
+                            <option value="">-- Sélectionner --</option>
+                            @foreach (var course in Model.Courses)
+                            {
+                                <option value="@course.Id">@course.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="NewCompetition.CourseId" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label asp-for="NewCompetition.Mode" class="form-label">Mode</label>
+                        <select asp-for="NewCompetition.Mode" class="form-select">
+                            <option value="Competition">Compétition</option>
+                            <option value="Training">Entraînement</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label asp-for="NewCompetition.CompetitionType" class="form-label">Format</label>
+                        <select asp-for="NewCompetition.CompetitionType" class="form-select">
+                            <option value="@CompetitionType.IndividualStrokePlay">Stroke play individuel</option>
+                            <option value="@CompetitionType.DoublesScramble">Doubles Scramble</option>
+                            <option value="@CompetitionType.DoublesFourball">Doubles Fourball</option>
+                            <option value="@CompetitionType.DoublesFoursome">Doubles Foursome</option>
+                            <option value="@CompetitionType.MatchPlayIndividual">Match play individuel</option>
+                            <option value="@CompetitionType.MatchPlayFourball">Match play Fourball</option>
+                            <option value="@CompetitionType.MatchPlayFoursome">Match play Foursome</option>
+                            <option value="@CompetitionType.MatchPlayScramble">Match play Scramble</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label asp-for="NewCompetition.Visibility" class="form-label">Visibilité</label>
+                        <select asp-for="NewCompetition.Visibility" class="form-select">
+                            <option value="@CompetitionVisibility.Public">Publique</option>
+                            <option value="@CompetitionVisibility.Club">Club</option>
+                            <option value="@CompetitionVisibility.Private">Privée</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="col-md-3">
-                    <label class="form-label">Parcours</label>
-                    <select asp-for="NewCompetition.CourseId" class="form-select">
-                        <option value="">-- Sélectionner --</option>
-                        @foreach (var course in Model.Courses)
-                        {
-                            <option value="@course.Id">@course.Name</option>
-                        }
-                    </select>
-                </div>
-
-                <div class="col-md-3">
-                    <label class="form-label">Date</label>
-                    <input asp-for="NewCompetition.Date" type="date" class="form-control" />
-                </div>
-
-                <!-- ✅ NEW : Mode -->
-                <div class="col-md-4">
-                    <label class="form-label">Mode</label>
-                    <select asp-for="NewCompetition.ScoringMode" class="form-select">
-                        <option value="0">Compétition (scoring par squad)</option>
-                        <option value="1">Entraînement (scoring individuel)</option>
-                    </select>
-                </div>
-
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">Ajouter</button>
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-primary">
+                        Créer
+                    </button>
                 </div>
             </form>
+        </div>
+    </div>
 
-            @if (!ViewData.ModelState.IsValid)
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <strong>Liste des compétitions</strong>
+        </div>
+        <div class="card-body">
+            @if (Model.Competitions == null || !Model.Competitions.Any())
             {
-                <div class="text-danger mt-2">
-                    @foreach (var err in ViewData.ModelState.Values.SelectMany(v => v.Errors))
-                    {
-                        <div>@err.ErrorMessage</div>
-                    }
+                <div class="alert alert-secondary mb-0">
+                    Aucune compétition enregistrée.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nom</th>
+                                <th>Date</th>
+                                <th>Parcours</th>
+                                <th>Mode</th>
+                                <th>Format</th>
+                                <th>Visibilité</th>
+                                <th>Statut</th>
+                                <th>Joueurs</th>
+                                <th>Progression</th>
+                                <th style="min-width: 380px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                int index = 1;
+                            }
+                            @foreach (var comp in Model.Competitions)
+                            {
+                                var state = Model.CompetitionStates.ContainsKey(comp.Id)
+                                ? Model.CompetitionStates[comp.Id]
+                                : null;
+
+                                <tr>
+                                    <td>@index</td>
+                                    <td class="fw-semibold">@comp.Name</td>
+                                    <td>@comp.Date.ToString("dd/MM/yyyy")</td>
+                                    <td>@(comp.Course?.Name ?? "-")</td>
+                                    <td>
+                                        @if (string.Equals(comp.Mode, "Training", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="badge bg-info text-dark">Entraînement</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary">Compétition</span>
+                                        }
+                                    </td>
+                                    <td>@comp.CompetitionType</td>
+                                    <td>
+                                        @switch (comp.Visibility)
+                                        {
+                                            case CompetitionVisibility.Public:
+                                                <span class="badge bg-success">Publique</span>
+                                                break;
+                                            case CompetitionVisibility.Club:
+                                                <span class="badge bg-warning text-dark">Club</span>
+                                                break;
+                                            case CompetitionVisibility.Private:
+                                                <span class="badge bg-secondary">Privée</span>
+                                                break;
+                                        }
+                                    </td>
+                                    <td>
+                                        @switch (comp.Status)
+                                        {
+                                            case CompetitionStatus.Draft:
+                                                <span class="badge bg-secondary">Brouillon</span>
+                                                break;
+                                            case CompetitionStatus.InProgress:
+                                                <span class="badge bg-warning text-dark">En cours</span>
+                                                break;
+                                            case CompetitionStatus.Finished:
+                                                <span class="badge bg-dark">Terminée</span>
+                                                break;
+                                        }
+                                    </td>
+                                    <td>@(state?.PlayerCount ?? 0)</td>
+                                    <td>
+                                        @if (state == null || state.PlayerCount == 0)
+                                        {
+                                            <span>-</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@state.CompletedRounds / @state.PlayerCount</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <a asp-page="/Competitions/Details"
+                                               asp-route-id="@comp.Id"
+                                               class="btn btn-sm btn-outline-dark">
+                                                Gérer
+                                            </a>
+
+                                            <a asp-page="/CompetitionParticipants"
+                                               asp-route-competitionId="@comp.Id"
+                                               class="btn btn-sm btn-outline-success">
+                                                Participants
+                                            </a>
+
+                                            <a asp-page="/Leaderboard"
+                                               asp-route-competitionId="@comp.Id"
+                                               class="btn btn-sm btn-outline-primary">
+                                                Leaderboard
+                                            </a>
+
+                                            <a asp-page="/Display"
+                                               asp-route-competitionId="@comp.Id"
+                                               class="btn btn-sm btn-outline-info">
+                                                Club House
+                                            </a>
+
+                                            <a asp-page="/Competitions/ResultsDetails"
+                                               asp-route-competitionId="@comp.Id"
+                                               class="btn btn-sm btn-outline-secondary">
+                                                Résultats
+                                            </a>
+
+                                            <form method="post"
+                                                  asp-page-handler="Delete"
+                                                  asp-route-id="@comp.Id"
+                                                  onsubmit="return confirm('Confirmer la suppression de cette compétition ?');"
+                                                  class="d-inline">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                    Supprimer
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                index++;
+                            }
+                        </tbody>
+                    </table>
                 </div>
             }
         </div>
     </div>
-
-    <!-- Table -->
-    <table class="table table-striped table-bordered align-middle">
-        <thead class="table-dark">
-            <tr>
-                <th style="width:80px;">Id</th>
-                <th>Nom</th>
-                <th>Parcours</th>
-                <th style="width:160px;">Date</th>
-                <th style="width:160px;">Mode</th>
-                <th style="width:120px;">Active</th>
-                <th style="width:150px;">Accès</th>
-                <th style="width:140px;">Action</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            @if (!Model.Competitions.Any())
-            {
-                <tr><td colspan="8" class="text-center text-muted">Aucune compétition</td></tr>
-            }
-            else
-            {
-                foreach (var c in Model.Competitions)
-                {
-                    <tr>
-                        <td>@c.Id</td>
-                        <td>@c.Name</td>
-                        <td>@(c.Course?.Name ?? "-")</td>
-                        <td>@c.Date.ToString("dd/MM/yyyy")</td>
-                        <td>@(c.ScoringMode == AFG_Livescoring.Models.ScoringMode.SquadOnly ? "Compétition" : "Entraînement")</td>
-                        <td>@(c.IsActive ? "Oui" : "Non")</td>
-
-                        <!-- Accès : Participants + Live -->
-                        <td>
-                            <div class="d-flex flex-column gap-2">
-
-                                <a class="btn btn-secondary btn-sm w-100"
-                                   href="/CompetitionParticipants?competitionId=@c.Id">
-                                    Participants
-                                </a>
-
-                                @if (c.CourseId == null)
-                                {
-                                    <button class="btn btn-success btn-sm w-100"
-                                            disabled
-                                            title="Associe un parcours à la compétition pour activer le live">
-                                        Live
-                                    </button>
-                                }
-                                else
-                                {
-                                    <a class="btn btn-success btn-sm w-100"
-                                       href="/Leaderboard?competitionId=@c.Id">
-                                        Live
-                                    </a>
-                                }
-
-                            </div>
-                        </td>
-
-                        <!-- Action : Squads + Delete -->
-                        <td>
-                            <div class="d-flex flex-column gap-2">
-
-                                <a class="btn btn-outline-primary btn-sm w-100"
-                                   href="/Squads/Manage?competitionId=@c.Id">
-                                    Squads
-                                </a>
-
-                                <form method="post" asp-page-handler="Delete" asp-route-id="@c.Id" class="m-0">
-                                    <button type="submit"
-                                            class="btn btn-danger btn-sm w-100"
-                                            onclick="return confirm('Supprimer la compétition ?');">
-                                        Supprimer
-                                    </button>
-                                </form>
-
-                            </div>
-                        </td>
-                    </tr>
-                }
-            }
-        </tbody>
-    </table>
 </div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

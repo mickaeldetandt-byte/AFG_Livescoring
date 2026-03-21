@@ -9,16 +9,26 @@ namespace AFG_Livescoring.Models
     {
         public AppDbContext CreateDbContext(string[] args)
         {
+            var environment = System.Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+                .AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: false)
                 .AddEnvironmentVariables()
                 .Build();
 
             var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
             var cs = configuration.GetConnectionString("DefaultConnection");
 
-            optionsBuilder.UseSqlServer(cs);
+            if (environment == "Development")
+            {
+                optionsBuilder.UseSqlite(cs);
+            }
+            else
+            {
+                optionsBuilder.UseSqlServer(cs);
+            }
 
             return new AppDbContext(optionsBuilder.Options);
         }

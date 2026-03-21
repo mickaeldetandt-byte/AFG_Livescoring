@@ -1,0 +1,41 @@
+﻿@page
+@model AFG_Livescoring.Pages.Account.LoginModel
+@{
+    ViewData["Title"] = "Connexion";
+}
+
+<div class="container mt-5" style="max-width: 450px;">
+
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <strong>Connexion</strong>
+        </div>
+        <div class="card-body">
+
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger">
+                    @Model.ErrorMessage
+                </div>
+            }
+
+            <form method="post">
+                <div class="mb-3">
+                    <label asp-for="Email" class="form-label">Email</label>
+                    <input asp-for="Email" class="form-control" />
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Password" class="form-label">Mot de passe</label>
+                    <input asp-for="Password" type="password" class="form-control" />
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary">
+                        Se connecter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

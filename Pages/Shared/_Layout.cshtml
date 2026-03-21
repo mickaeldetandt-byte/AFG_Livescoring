@@ -1,44 +1,95 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>@ViewData["Title"] - AFG_Livescoring</title>
+
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/AFG_Livescoring.styles.css" asp-append-version="true" />
 </head>
 <body>
+
     <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+        <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container">
+
                 <a class="navbar-brand" asp-area="" asp-page="/Index">AFG_Livescoring</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
+
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar"
+                        aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
+
+                <div class="collapse navbar-collapse" id="mainNavbar">
+
+                    <!-- MENU GAUCHE -->
+                    <ul class="navbar-nav me-auto">
+
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-page="/Index">Accueil</a>
                         </li>
 
+                        <!-- 🔥 PUBLIC → visible pour tous -->
                         <li class="nav-item">
-                            <a class="nav-link text-dark" asp-page="/Players">Joueurs</a>
+                            <a class="nav-link text-dark" asp-page="/Competitions/Public">Live</a>
                         </li>
 
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-page="/Competitions">Compétitions</a>
-                        </li>
+                        @if (User.Identity != null && User.Identity.IsAuthenticated)
+                        {
+                            @if (User.IsInRole("Admin"))
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" href="/Players">Joueurs</a>
+                                </li>
 
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-page="/Admin/DbView">Base</a>
-                        </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-page="/Competitions">Compétitions</a>
+                                </li>
+
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-page="/Admin/DbView">Base</a>
+                                </li>
+                            }
+                            else if (User.IsInRole("Club"))
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-page="/Competitions">Compétitions</a>
+                                </li>
+                            }
+                        }
+
                     </ul>
+
+                    <!-- MENU DROIT -->
+                    <div class="d-flex align-items-center gap-2 mt-2 mt-sm-0">
+
+                        @if (User.Identity != null && User.Identity.IsAuthenticated)
+                        {
+                            <span class="text-success small">
+                                Connecté : @User.Identity.Name
+                                (@User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value)
+                            </span>
+
+                            <a class="btn btn-sm btn-outline-danger" asp-page="/Account/Logout">
+                                Déconnexion
+                            </a>
+                        }
+                        else
+                        {
+                            <a class="btn btn-sm btn-outline-primary" asp-page="/Account/Login">
+                                Connexion
+                            </a>
+                        }
+
+                    </div>
+
                 </div>
             </div>
         </nav>
     </header>
+
     <div class="container">
         <main role="main" class="pb-3">
             @RenderBody()
@@ -46,8 +97,8 @@
     </div>
 
     <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - AFG_Livescoring - <a asp-area="" asp-page="/Privacy">Privacy</a>
+        <div class="container text-center">
+            AFG LiveScoring – V1.0.0
         </div>
     </footer>
 
@@ -56,5 +107,6 @@
     <script src="~/js/site.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
+
 </body>
 </html>

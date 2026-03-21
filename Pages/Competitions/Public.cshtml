@@ -1,0 +1,123 @@
+﻿@page
+@model AFG_Livescoring.Pages.Competitions.PublicModel
+@using AFG_Livescoring.Models
+@{
+    ViewData["Title"] = "Compétitions publiques";
+}
+
+<div class="container mt-4">
+
+    <div class="mb-4">
+        <h2 class="mb-1">Compétitions publiques</h2>
+        <div class="text-muted">
+            Accès libre au live scoring et au Club House des compétitions publiques
+        </div>
+    </div>
+
+    @if (Model.Competitions == null || !Model.Competitions.Any())
+    {
+        <div class="alert alert-secondary">
+            Aucune compétition publique disponible pour le moment.
+        </div>
+    }
+    else
+    {
+        <div class="row g-3">
+            @foreach (var comp in Model.Competitions)
+            {
+                <div class="col-12 col-lg-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+
+                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                                <div>
+                                    <h4 class="mb-1">@comp.Name</h4>
+                                    <div class="text-muted">
+                                        @comp.Date.ToString("dd/MM/yyyy")
+                                        @if (!string.IsNullOrWhiteSpace(comp.CourseName) && comp.CourseName != "-")
+                                        {
+                                            <span>• @comp.CourseName</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div>
+                                    @switch (comp.Status)
+                                    {
+                                        case CompetitionStatus.Draft:
+                                            <span class="badge bg-secondary">@Model.FormatStatus(comp.Status)</span>
+                                            break;
+                                        case CompetitionStatus.InProgress:
+                                            <span class="badge bg-warning text-dark">@Model.FormatStatus(comp.Status)</span>
+                                            break;
+                                        case CompetitionStatus.Finished:
+                                            <span class="badge bg-dark">@Model.FormatStatus(comp.Status)</span>
+                                            break;
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="mb-3 d-flex flex-wrap gap-2">
+                                @if (comp.IsTraining)
+                                {
+                                    <span class="badge bg-info text-dark">Entraînement</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-primary">Compétition</span>
+                                }
+
+                                <span class="badge bg-light text-dark border">@comp.CompetitionType</span>
+                            </div>
+
+                            <div class="row g-2 mb-3">
+                                <div class="col-4">
+                                    <div class="border rounded p-2 text-center h-100">
+                                        <div class="small text-muted">Participants</div>
+                                        <div class="fw-bold">@comp.PlayerCount</div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="border rounded p-2 text-center h-100">
+                                        <div class="small text-muted">Démarré</div>
+                                        <div class="fw-bold">@(comp.HasStarted ? "Oui" : "Non")</div>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="border rounded p-2 text-center h-100">
+                                        <div class="small text-muted">Cartes OK</div>
+                                        <div class="fw-bold">@comp.CompletedRounds / @comp.PlayerCount</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex flex-wrap gap-2">
+                                <a asp-page="/Leaderboard"
+                                   asp-route-competitionId="@comp.Id"
+                                   class="btn btn-primary">
+                                    Voir le live
+                                </a>
+
+                                <a asp-page="/Display"
+                                   asp-route-competitionId="@comp.Id"
+                                   class="btn btn-outline-info">
+                                    Club House
+                                </a>
+
+                                @if (comp.Status == CompetitionStatus.Finished)
+                                {
+                                    <a asp-page="/Competitions/ResultsDetails"
+                                       asp-route-competitionId="@comp.Id"
+                                       class="btn btn-outline-secondary">
+                                        Résultats
+                                    </a>
+                                }
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>

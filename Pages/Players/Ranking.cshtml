@@ -1,0 +1,108 @@
+﻿@page
+@model AFG_Livescoring.Pages.Players.RankingModel
+@{
+    ViewData["Title"] = "Classement club";
+}
+
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Classement club</h2>
+            <div class="text-muted">Classement simple basé sur les performances enregistrées</div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <a asp-page="/Players/Index" class="btn btn-outline-secondary">
+                Retour joueurs
+            </a>
+            <a asp-page="/Players/Stats" class="btn btn-outline-primary">
+                Voir les stats
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <strong>Classement des joueurs</strong>
+        </div>
+
+        <div class="card-body p-0">
+            @if (Model.Rankings == null || Model.Rankings.Count == 0)
+            {
+                <div class="p-3 text-muted">
+                    Aucune donnée disponible pour le classement.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Rang</th>
+                                <th>Joueur</th>
+                                <th>Compétitions</th>
+                                <th>Cartes complètes</th>
+                                <th>Moyenne coups</th>
+                                <th>Moyenne ± Par</th>
+                                <th>Meilleure carte</th>
+                                <th>Birdies</th>
+                                <th>Pars</th>
+                                <th>Bogeys</th>
+                                <th>Double+ </th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in Model.Rankings)
+                            {
+                                bool hasData = row.CompletedRoundsCount > 0;
+                                string rankBadgeClass = "bg-secondary";
+
+                                if (row.Rank == 1) rankBadgeClass = "bg-warning text-dark";
+                                else if (row.Rank == 2) rankBadgeClass = "bg-secondary";
+                                else if (row.Rank == 3) rankBadgeClass = "bg-dark";
+
+                                <tr>
+                                    <td>
+                                        <span class="badge @rankBadgeClass fs-6">
+                                            @row.Rank
+                                        </span>
+                                    </td>
+                                    <td class="fw-semibold">@row.PlayerName</td>
+                                    <td>@row.CompetitionsCount</td>
+                                    <td>@row.CompletedRoundsCount</td>
+                                    <td>@(hasData? row.AverageStrokes.ToString("0.0") : "-")</td>
+                                    <td class="@Model.GetToParCssClass(row.AverageToPar, hasData)">
+                                        @Model.FormatToPar(row.AverageToPar, hasData)
+                                    </td>
+                                    <td>@(hasData? row.BestStrokes.ToString() : "-")</td>
+                                    <td>@row.Birdies</td>
+                                    <td>@row.Pars</td>
+                                    <td>@row.Bogeys</td>
+                                    <td>@row.DoubleBogeysOrMore</td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <a asp-page="/Players/Details"
+                                               asp-route-id="@row.PlayerId"
+                                               class="btn btn-sm btn-outline-primary">
+                                                Profil
+                                            </a>
+
+                                            <a asp-page="/Players/Stats"
+                                               asp-route-playerId="@row.PlayerId"
+                                               class="btn btn-sm btn-outline-secondary">
+                                                Stats
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>

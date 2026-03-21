@@ -1,0 +1,548 @@
+﻿@page
+@model AFG_Livescoring.Pages.DisplayModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Club House Display";
+
+    var startedRows = Model.Rows.Where(x => x.HolesPlayed > 0).ToList();
+    var visibleRows = startedRows.Any() ? startedRows : Model.Rows.ToList();
+    var top3 = startedRows.Take(3).ToList();
+}
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <title>AFG LiveScoring - Display</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #111827;
+            --card2: #1f2937;
+            --text: #f8fafc;
+            --muted: #cbd5e1;
+            --line: rgba(255,255,255,0.08);
+            --gold: #facc15;
+            --silver: #d1d5db;
+            --bronze: #fdba74;
+            --green: #22c55e;
+            --red: #ef4444;
+            --gray: #cbd5e1;
+            --blue: #38bdf8;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: linear-gradient(180deg, #0b1220 0%, var(--bg) 100%);
+            color: var(--text);
+        }
+
+        .page {
+            padding: 24px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin: 0 0 8px 0;
+        }
+
+        .sub {
+            color: var(--muted);
+            font-size: 1rem;
+            line-height: 1.4;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-left: 10px;
+        }
+
+        .badge-training {
+            background: #67e8f9;
+            color: #082f49;
+        }
+
+        .badge-competition {
+            background: #334155;
+            color: #f8fafc;
+        }
+
+        .updated {
+            text-align: right;
+            color: var(--muted);
+            font-size: 1rem;
+            min-width: 240px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 12px 16px;
+        }
+
+        .top3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin-bottom: 22px;
+        }
+
+        .podium {
+            border-radius: 20px;
+            padding: 18px;
+            background: var(--card);
+            border: 1px solid var(--line);
+            min-height: 165px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+        }
+
+        .podium-1 {
+            background: linear-gradient(180deg, rgba(250,204,21,0.18), rgba(17,24,39,1));
+            border-color: rgba(250,204,21,0.35);
+        }
+
+        .podium-2 {
+            background: linear-gradient(180deg, rgba(209,213,219,0.16), rgba(17,24,39,1));
+            border-color: rgba(209,213,219,0.28);
+        }
+
+        .podium-3 {
+            background: linear-gradient(180deg, rgba(251,146,60,0.16), rgba(17,24,39,1));
+            border-color: rgba(251,146,60,0.28);
+        }
+
+        .podium-rank {
+            font-size: 2rem;
+            font-weight: 800;
+        }
+
+        .podium-title {
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .podium-name {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin: 10px 0 6px 0;
+        }
+
+        .podium-score {
+            font-size: 2rem;
+            font-weight: 900;
+        }
+
+        .podium-meta {
+            color: var(--muted);
+            font-size: 0.95rem;
+            margin-top: 6px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: rgba(17, 24, 39, 0.95);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            padding: 18px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.22);
+        }
+
+        .panel-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+            margin: 0 0 14px 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead th {
+            text-align: left;
+            font-size: 0.95rem;
+            color: #e5e7eb;
+            border-bottom: 1px solid var(--line);
+            padding: 12px 10px;
+        }
+
+        tbody td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 1rem;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .rank {
+            font-weight: 800;
+            width: 70px;
+        }
+
+        .player {
+            font-weight: 700;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .par-under {
+            color: var(--green);
+            font-weight: 800;
+        }
+
+        .par-even {
+            color: var(--gray);
+            font-weight: 800;
+        }
+
+        .par-over {
+            color: var(--red);
+            font-weight: 800;
+        }
+
+        .top-row-1 {
+            background: rgba(250, 204, 21, 0.08);
+        }
+
+        .top-row-2 {
+            background: rgba(209, 213, 219, 0.06);
+        }
+
+        .top-row-3 {
+            background: rgba(251, 146, 60, 0.06);
+        }
+
+        .squad-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .squad-item {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px;
+            background: rgba(255,255,255,0.02);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .squad-name {
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .squad-meta {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .status {
+            text-align: right;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 0.9rem;
+        }
+
+        .status-running {
+            background: rgba(56, 189, 248, 0.18);
+            color: #7dd3fc;
+        }
+
+        .status-finished {
+            background: rgba(34, 197, 94, 0.18);
+            color: #86efac;
+        }
+
+        .footer {
+            margin-top: 18px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            text-align: right;
+        }
+
+        @@media (max-width: 1200px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @@media (max-width: 900px) {
+            .top3 {
+                grid-template-columns: 1fr;
+            }
+
+            .title {
+                font-size: 1.8rem;
+            }
+
+            tbody td, thead th {
+                font-size: 0.92rem;
+                padding: 10px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+
+        <div class="header">
+            <div>
+                <h1 class="title">AFG LiveScoring</h1>
+                <div class="sub">
+                    Compétition : <strong>@Model.Competition?.Name</strong>
+
+                    @if (Model.IsTraining)
+                    {
+                        <span class="badge badge-training">ENTRAÎNEMENT</span>
+                    }
+                    else
+                    {
+                        <span class="badge badge-competition">COMPÉTITION</span>
+                    }
+                </div>
+
+                @if (Model.CourseParTotal > 0)
+                {
+                    <div class="sub">Parcours : Par <strong>@Model.CourseParTotal</strong></div>
+                }
+            </div>
+
+            <div class="updated">
+                <div>Dernière mise à jour</div>
+                <strong id="liveClock">@DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")</strong>
+            </div>
+        </div>
+
+        @if (top3.Any())
+        {
+            <div class="top3">
+                @for (int i = 0; i < top3.Count; i++)
+                {
+                    var player = top3[i];
+                    var podiumCss = i == 0 ? "podium-1" : i == 1 ? "podium-2" : "podium-3";
+                    var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : "🥉";
+                    var title = i == 0 ? "Leader" : i == 1 ? "2e place" : "3e place";
+
+                    <div class="podium @podiumCss">
+                        <div>
+                            <div class="podium-rank">@medal</div>
+                            <div class="podium-title">@title</div>
+                            <div class="podium-name">@player.PlayerName</div>
+                        </div>
+
+                        <div>
+                            <div class="podium-score @Model.GetParCssClass(player.DiffToPar)">
+                                @Model.FormatDiffToPar(player.DiffToPar, player.TotalStrokes > 0)
+                            </div>
+                            <div class="podium-meta">@player.HolesPlayed / 18 trous</div>
+                            @if (!string.IsNullOrWhiteSpace(player.SquadName))
+                            {
+                                <div class="podium-meta">@player.SquadName</div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="grid">
+            <div class="panel">
+                <h2 class="panel-title">Classement</h2>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:70px;">#</th>
+                            <th>@(Model.IsDoublesCompetition ? "Équipe" : "Joueur")</th>
+                            <th style="width:110px;">Trous</th>
+                            <th style="width:100px;">Total</th>
+                            <th style="width:110px;">±Par</th>
+                            <th style="width:110px;">Écart</th>
+                            <th style="width:120px;">Squad</th>
+                            <th style="width:130px;">Trou squad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            var rank = 1;
+                        }
+
+                        @foreach (var row in visibleRows)
+                        {
+                            var rowCss = rank == 1 ? "top-row-1" : rank == 2 ? "top-row-2" : rank == 3 ? "top-row-3" : "";
+
+                            <tr class="@rowCss">
+                                <td class="rank">
+                                    @if (rank == 1 && row.TotalStrokes > 0)
+                                    {
+                                        @:🥇
+                                    }
+                                    else if (rank == 2 && row.TotalStrokes > 0)
+                                    {
+                                        @:🥈
+                                    }
+                                    else if (rank == 3 && row.TotalStrokes > 0)
+                                    {
+                                        @:🥉
+                                    }
+                                    else
+                                    {
+                                        @rank
+                                    }
+                                </td>
+
+                                <td class="player">@row.PlayerName</td>
+                                <td>@row.HolesPlayed / 18</td>
+                                <td>@(row.TotalStrokes == 0 ? "-" : row.TotalStrokes)</td>
+
+                                <td class="@Model.GetParCssClass(row.DiffToPar)">
+                                    @Model.FormatDiffToPar(row.DiffToPar, row.TotalStrokes > 0)
+                                </td>
+
+                                <td class="@Model.GetDifferenceCssClass(row.Difference, row.TotalStrokes > 0)">
+                                    @Model.FormatDifference(row.Difference, row.TotalStrokes > 0)
+                                </td>
+
+                                <td>@(string.IsNullOrWhiteSpace(row.SquadName) ? "-" : row.SquadName)</td>
+
+                                <td>
+                                    @if (row.SquadId.HasValue && Model.SquadProgressById.TryGetValue(row.SquadId.Value, out var prog))
+                                    {
+                                        if (prog.Finished)
+                                        {
+                                            <span class="status-badge status-finished">Terminé</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="status-badge status-running">Trou @prog.CurrentHole</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">-</span>
+                                    }
+                                </td>
+                            </tr>
+
+                            rank++;
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="panel">
+                <h2 class="panel-title">Suivi des squads</h2>
+
+                <div class="squad-list">
+                    @foreach (var sp in Model.SquadProgressById.Values.OrderBy(x => x.SquadName))
+                    {
+                        <div class="squad-item">
+                            <div>
+                                <div class="squad-name">@sp.SquadName</div>
+                                <div class="squad-meta">StartHole @sp.StartHole</div>
+                            </div>
+
+                            <div class="status">
+                                @if (sp.Finished)
+                                {
+                                    <div class="status-badge status-finished">Terminé</div>
+                                    <div class="squad-meta">18/18</div>
+                                }
+                                else
+                                {
+                                    <div class="status-badge status-running">Trou @sp.CurrentHole</div>
+                                    <div class="squad-meta">@sp.MinHolesPlayed / 18</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="footer">
+                    Actualisation automatique toutes les 30 secondes
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let scrollSpeed = 0.3;
+
+        function autoScroll() {
+            window.scrollBy(0, scrollSpeed);
+
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight) {
+                setTimeout(function () {
+                    window.scrollTo(0, 0);
+                }, 3000);
+            }
+        }
+
+        function updateClock() {
+            const now = new Date();
+
+            const pad = (n) => n.toString().padStart(2, '0');
+
+            const text =
+                pad(now.getDate()) + "/" +
+                pad(now.getMonth() + 1) + "/" +
+                now.getFullYear() + " " +
+                pad(now.getHours()) + ":" +
+                pad(now.getMinutes()) + ":" +
+                pad(now.getSeconds());
+
+            const clock = document.getElementById("liveClock");
+            if (clock) {
+                clock.textContent = text;
+            }
+        }
+
+        setInterval(autoScroll, 20);
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        setTimeout(function () {
+            window.location.reload();
+        }, 60000);
+    </script>
+</body>
+</html>

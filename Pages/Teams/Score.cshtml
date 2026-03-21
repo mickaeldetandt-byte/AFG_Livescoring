@@ -1,0 +1,216 @@
+﻿@page
+@model AFG_Livescoring.Pages.Teams.ScoreModel
+@{
+    ViewData["Title"] = "Score équipe";
+}
+
+<div class="container mt-4">
+
+    <h2>Score équipe</h2>
+
+    <div class="mb-3">
+        <strong>Compétition :</strong> @Model.Competition?.Name<br />
+        <strong>Squad :</strong> @Model.Squad?.Name<br />
+        <strong>Trou :</strong> @Model.CurrentHole
+        @if (Model.CurrentPar.HasValue)
+        {
+            <span class="text-muted">(Par @Model.CurrentPar)</span>
+        }
+    </div>
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">
+            @TempData["Error"]
+        </div>
+    }
+
+    @if (TempData["Info"] != null)
+    {
+        <div class="alert alert-info">
+            @TempData["Info"]
+        </div>
+    }
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success">
+            @TempData["Success"]
+        </div>
+    }
+
+    <div class="mb-3 d-flex flex-wrap gap-2">
+        <a asp-page="/Leaderboard"
+           asp-route-competitionId="@Model.CompetitionId"
+           class="btn btn-outline-secondary">
+            Retour leaderboard
+        </a>
+
+        @if (Model.IsHoleValidated && !Model.IsSquadLocked)
+        {
+            <form method="post" asp-page-handler="Correct" class="d-inline">
+                <input type="hidden" name="CompetitionId" value="@Model.CompetitionId" />
+                <input type="hidden" name="SquadId" value="@Model.SquadId" />
+                <input type="hidden" name="CurrentHole" value="@Model.CurrentHole" />
+                <input type="hidden" name="Edit" value="true" />
+                <button type="submit" class="btn btn-warning">
+                    Corriger le trou
+                </button>
+            </form>
+        }
+
+        @if (!Model.IsSquadLocked)
+        {
+            <form method="post" asp-page-handler="LockCard" class="d-inline">
+                <input type="hidden" name="CompetitionId" value="@Model.CompetitionId" />
+                <input type="hidden" name="SquadId" value="@Model.SquadId" />
+                <input type="hidden" name="CurrentHole" value="@Model.CurrentHole" />
+                <input type="hidden" name="Edit" value="@Model.Edit" />
+                <button type="submit" class="btn btn-success">
+                    Valider la carte
+                </button>
+            </form>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="Unlock" class="d-inline">
+                <input type="hidden" name="competitionId" value="@Model.CompetitionId" />
+                <input type="hidden" name="squadId" value="@Model.SquadId" />
+                <input type="hidden" name="hole" value="@Model.CurrentHole" />
+                <button type="submit" class="btn btn-outline-danger">
+                    Déverrouiller
+                </button>
+            </form>
+        }
+    </div>
+
+    @if (Model.IsSquadLocked)
+    {
+        <div class="alert alert-secondary">
+            Carte verrouillée.
+        </div>
+    }
+
+    <form method="post">
+        <input type="hidden" asp-for="CompetitionId" />
+        <input type="hidden" asp-for="SquadId" />
+        <input type="hidden" asp-for="CurrentHole" />
+        <input type="hidden" asp-for="Edit" />
+
+        <div class="row g-3">
+            @foreach (var team in Model.Teams)
+            {
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title mb-1">@team.TeamName</h5>
+                            <div class="text-muted mb-3">@team.PlayersDisplay</div>
+
+                            @if (Model.IsFourballCompetition)
+                            {
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">@team.Player1Name</label>
+                                        <input type="number"
+                                               min="1"
+                                               name="Player1Scores[@team.TeamRoundId]"
+                                               value="@(team.Player1Strokes > 0 ? team.Player1Strokes : "")"
+                                               class="form-control form-control-lg"
+                                               @(Model.IsHoleValidated || Model.IsSquadLocked ? "readonly" : "") />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">@team.Player2Name</label>
+                                        <input type="number"
+                                               min="1"
+                                               name="Player2Scores[@team.TeamRoundId]"
+                                               value="@(team.Player2Strokes > 0 ? team.Player2Strokes : "")"
+                                               class="form-control form-control-lg"
+                                               @(Model.IsHoleValidated || Model.IsSquadLocked ? "readonly" : "") />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">Score équipe retenu</label>
+                                        <input type="number"
+                                               value="@(team.Strokes > 0 ? team.Strokes : 0)"
+                                               data-team="@team.TeamRoundId"
+                                               class="form-control form-control-lg"
+                                               readonly />
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Score équipe</label>
+                                        <input type="number"
+                                               min="1"
+                                               name="Scores[@team.TeamRoundId]"
+                                               value="@(team.Strokes > 0 ? team.Strokes : "")"
+                                               class="form-control form-control-lg"
+                                               @(Model.IsHoleValidated || Model.IsSquadLocked ? "readonly" : "") />
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (!Model.IsHoleValidated && !Model.IsSquadLocked)
+        {
+            <div class="mt-4 d-grid">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    Enregistrer le trou @Model.CurrentHole
+                </button>
+            </div>
+        }
+    </form>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+
+            const player1Inputs = document.querySelectorAll("input[name^='Player1Scores']");
+            const player2Inputs = document.querySelectorAll("input[name^='Player2Scores']");
+
+            function updateTeamScore(teamRoundId)
+            {
+                const p1 = document.querySelector("input[name='Player1Scores[" + teamRoundId + "]']");
+                const p2 = document.querySelector("input[name='Player2Scores[" + teamRoundId + "]']");
+                const team = document.querySelector("input[data-team='" + teamRoundId + "']");
+
+                if (!p1 || !p2 || !team)
+                    return;
+
+                const v1 = parseInt(p1.value);
+                const v2 = parseInt(p2.value);
+
+                if (!isNaN(v1) && !isNaN(v2))
+                {
+                    team.value = Math.min(v1, v2);
+                }
+            }
+
+            player1Inputs.forEach(input => {
+                input.addEventListener("input", function () {
+                    const id = this.name.match(/\[(.*?)\]/)[1];
+                    updateTeamScore(id);
+                });
+            });
+
+            player2Inputs.forEach(input => {
+                input.addEventListener("input", function () {
+                    const id = this.name.match(/\[(.*?)\]/)[1];
+                    updateTeamScore(id);
+                });
+            });
+
+        });
+    </script>
+
+
+
+
+</div>

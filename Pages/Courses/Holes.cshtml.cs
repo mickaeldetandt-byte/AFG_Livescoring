@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -5,6 +6,7 @@ using AFG_Livescoring.Models;
 
 namespace AFG_Livescoring.Pages.Courses
 {
+    [Authorize(Roles = "Admin")]
     public class HolesModel : PageModel
     {
         private readonly AppDbContext _db;

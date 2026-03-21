@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -14,9 +15,6 @@ namespace AFG_Livescoring.Pages.Squads
             _db = db;
         }
 
-        // -------------------------
-        // QueryString (GET)
-        // -------------------------
         [BindProperty(SupportsGet = true)]
         public int CompetitionId { get; set; }
 
@@ -26,13 +24,12 @@ namespace AFG_Livescoring.Pages.Squads
         [BindProperty(SupportsGet = true)]
         public int? Hole { get; set; }
 
-        // Mode correction (organisateur)
         [BindProperty(SupportsGet = true)]
         public bool Edit { get; set; }
 
-        // -------------------------
-        // Données affichées
-        // -------------------------
+        [BindProperty(SupportsGet = true)]
+        public string? Token { get; set; }
+
         public Competition? Competition { get; set; }
         public Squad? Squad { get; set; }
 
@@ -43,6 +40,7 @@ namespace AFG_Livescoring.Pages.Squads
         public bool IsHoleValidated { get; set; }
         public bool IsLastHole { get; set; }
         public bool IsSquadLocked { get; set; }
+        public bool IsCompetitionFinished { get; set; }
 
         public List<PlayerScoreRow> Players { get; set; } = new();
 
@@ -54,214 +52,263 @@ namespace AFG_Livescoring.Pages.Squads
             public int Strokes { get; set; }
         }
 
+        private IActionResult? GetAccessResult(bool isWrite)
+        {
+            if (CanAccessByToken(isWrite))
+                return null;
+
+            if (User.Identity?.IsAuthenticated != true)
+                return RedirectToPage("/Account/Login");
+
+            if (CanAccessAsUser(isWrite))
+                return null;
+
+            return Forbid();
+        }
+
+        private bool CanAccessByToken(bool isWrite)
+        {
+            if (string.IsNullOrWhiteSpace(Token))
+                return false;
+
+            var hasValidToken = _db.Rounds.Any(r =>
+                r.CompetitionId == CompetitionId &&
+                r.SquadId == SquadId &&
+                r.PublicToken == Token);
+
+            if (!hasValidToken)
+                return false;
+
+            var competition = _db.Competitions.FirstOrDefault(c => c.Id == CompetitionId);
+            if (competition == null)
+                return false;
+
+            if (isWrite && competition.Status != CompetitionStatus.InProgress)
+                return false;
+
+            return true;
+        }
+
+        private bool CanAccessAsUser(bool isWrite)
+        {
+            var competition = _db.Competitions.FirstOrDefault(c => c.Id == CompetitionId);
+            if (competition == null)
+                return false;
+
+            if (isWrite && competition.Status != CompetitionStatus.InProgress)
+                return false;
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            var email = User.Identity?.Name;
+
+            if (string.IsNullOrWhiteSpace(role) || string.IsNullOrWhiteSpace(email))
+                return false;
+
+            if (role == "Admin")
+                return true;
+
+            var user = _db.AppUsers.FirstOrDefault(u => u.Email == email);
+            if (user == null)
+                return false;
+
+            if (role == "Club")
+            {
+                if (competition.ClubId.HasValue && user.ClubId == competition.ClubId)
+                    return true;
+            }
+
+            return false;
+        }
+
         private bool ComputeIsSquadLocked()
         {
-            if (CompetitionId <= 0 || SquadId <= 0) return false;
-
             return _db.Rounds.AsNoTracking().Any(r =>
                 r.CompetitionId == CompetitionId &&
                 r.SquadId == SquadId &&
                 r.IsLocked);
         }
 
-        private bool IsSquadComplete()
+        private IActionResult? CheckCompetitionAllowsScoring()
         {
-            var squadRoundIds = _db.Rounds
+            var competition = _db.Competitions
                 .AsNoTracking()
-                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
-                .Select(r => r.Id)
-                .ToList();
+                .FirstOrDefault(c => c.Id == CompetitionId);
 
-            if (squadRoundIds.Count == 0) return false;
+            if (competition == null)
+                return RedirectToPage("/Competitions");
 
-            var counts = _db.Scores
-                .AsNoTracking()
-                .Where(s => squadRoundIds.Contains(s.RoundId) && s.Strokes > 0)
-                .GroupBy(s => s.RoundId)
-                .Select(g => new { RoundId = g.Key, Count = g.Count() })
-                .ToDictionary(x => x.RoundId, x => x.Count);
+            if (competition.Status == CompetitionStatus.Draft)
+            {
+                TempData["Error"] = "La compétition est en brouillon. Le scoring n'est pas encore autorisé.";
+                return RedirectToPage("/Competitions/Details", new { id = CompetitionId });
+            }
 
-            return squadRoundIds.All(id => counts.ContainsKey(id) && counts[id] == 18);
+            if (competition.Status == CompetitionStatus.Finished)
+            {
+                TempData["Error"] = "La compétition est terminée. Le scoring est verrouillé.";
+                return RedirectToPage("/Competitions/Details", new { id = CompetitionId });
+            }
+
+            return null;
         }
 
-        private void LockSquad()
-        {
-            var roundsToLock = _db.Rounds
-                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
-                .ToList();
-
-            foreach (var r in roundsToLock)
-                r.IsLocked = true;
-
-            _db.SaveChanges();
-        }
-
-        private void AutoLockSquadIfComplete()
-        {
-            if (!IsSquadComplete()) return;
-
-            LockSquad();
-            TempData["Info"] = "Squad verrouillé automatiquement (18 trous remplis pour tous).";
-        }
-
-        // =========================================================
-        // GET
-        // =========================================================
         public IActionResult OnGet()
         {
-            // 1) Competition + Course
             Competition = _db.Competitions
                 .Include(c => c.Course)
+                .FirstOrDefault(c => c.Id == CompetitionId);
+
+            if (Competition == null)
+                return RedirectToPage("/Competitions");
+
+            var access = GetAccessResult(false);
+            if (access != null)
+                return access;
+
+            var scoringCheck = CheckCompetitionAllowsScoring();
+            if (scoringCheck != null)
+                return scoringCheck;
+
+            Squad = _db.Squads.FirstOrDefault(s => s.Id == SquadId);
+
+            if (Squad == null)
+                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
+
+            IsCompetitionFinished = Competition.Status == CompetitionStatus.Finished;
+            IsSquadLocked = ComputeIsSquadLocked();
+
+            if (Hole.HasValue)
+            {
+                CurrentHole = Hole.Value;
+            }
+            else
+            {
+                var squadRoundIds = _db.Rounds
+                    .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
+                    .Select(r => r.Id)
+                    .ToList();
+
+                if (squadRoundIds.Count == 0)
+                {
+                    CurrentHole = 1;
+                }
+                else
+                {
+                    CurrentHole = 1;
+
+                    for (int i = 1; i <= 18; i++)
+                    {
+                        bool holeComplete = squadRoundIds.All(rid =>
+                            _db.Scores.Any(s => s.RoundId == rid && s.HoleNumber == i));
+
+                        if (!holeComplete)
+                        {
+                            CurrentHole = i;
+                            break;
+                        }
+
+                        CurrentHole = 18;
+                    }
+                }
+            }
+
+            if (CurrentHole < 1) CurrentHole = 1;
+            if (CurrentHole > 18) CurrentHole = 18;
+
+            IsLastHole = (CurrentHole == 18);
+
+            CurrentPar = _db.Holes
+                .Where(h => h.CourseId == Competition.CourseId && h.HoleNumber == CurrentHole)
+                .Select(h => (int?)h.Par)
+                .FirstOrDefault();
+
+            var rounds = _db.Rounds
+                .Include(r => r.Player)
+                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
+                .ToList();
+
+            var roundIds = rounds.Select(r => r.Id).ToList();
+
+            var existingScores = _db.Scores
+                .Where(s => roundIds.Contains(s.RoundId) && s.HoleNumber == CurrentHole)
+                .ToList();
+
+            IsHoleValidated = existingScores.Any();
+
+            var dict = existingScores.ToDictionary(s => s.RoundId, s => s.Strokes);
+
+            Players = rounds.Select(r => new PlayerScoreRow
+            {
+                RoundId = r.Id,
+                PlayerId = r.PlayerId,
+                PlayerName = r.Player != null
+                    ? (r.Player.FirstName + " " + r.Player.LastName)
+                    : $"Joueur #{r.PlayerId}",
+                Strokes = dict.ContainsKey(r.Id) ? dict[r.Id] : 0
+            }).ToList();
+
+            return Page();
+        }
+
+        public IActionResult OnPost([FromForm] Dictionary<int, int> Scores)
+        {
+            Competition = _db.Competitions
                 .AsNoTracking()
                 .FirstOrDefault(c => c.Id == CompetitionId);
 
             if (Competition == null)
                 return RedirectToPage("/Competitions");
 
-            if (Competition.CourseId == null)
-            {
-                TempData["Error"] = "Aucun parcours n'est associé à cette compétition. Le Live est désactivé.";
-                return RedirectToPage("/Competitions");
-            }
+            var scoringCheck = CheckCompetitionAllowsScoring();
+            if (scoringCheck != null)
+                return scoringCheck;
 
-            // 2) Squad + vérification appartenance compétition
-            Squad = _db.Squads
-                .AsNoTracking()
-                .FirstOrDefault(s => s.Id == SquadId);
+            var access = GetAccessResult(true);
+            if (access != null)
+                return access;
 
-            if (Squad == null || Squad.CompetitionId != CompetitionId)
-            {
-                TempData["Error"] = "Squad introuvable ou ne correspond pas à la compétition.";
-                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
-            }
-
-            // 3) Lock status
-            IsSquadLocked = ComputeIsSquadLocked();
-
-            // IMPORTANT :
-            // Si le squad est COMPLET mais PAS verrouillé, on le re-verrouille automatiquement
-            // SAUF si on est en mode correction (Edit=true)
-            if (!IsSquadLocked && !Edit && IsSquadComplete())
-            {
-                LockSquad();
-                IsSquadLocked = true;
-                TempData["Info"] = "Squad re-verrouillé automatiquement (aucune correction en cours).";
-            }
-
-            // 4) Trou courant
-            CurrentHole = Hole ?? Squad.StartHole;
-            if (CurrentHole < 1 || CurrentHole > 18)
-                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
-
-            IsLastHole = (CurrentHole == 18);
-
-            // 5) Par du trou courant
-            CurrentPar = _db.Holes
-                .AsNoTracking()
-                .Where(h => h.CourseId == Competition.CourseId.Value && h.HoleNumber == CurrentHole)
-                .Select(h => (int?)h.Par)
-                .FirstOrDefault();
-
-            // 6) Rounds du squad
-            var rounds = _db.Rounds
-                .Include(r => r.Player)
-                .AsNoTracking()
-                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
-                .ToList();
-
-            if (rounds.Count == 0)
-            {
-                TempData["Error"] = "Aucun joueur n'est affecté à ce squad.";
-                return RedirectToPage("/Squads/Manage", new { competitionId = CompetitionId });
-            }
-
-            var roundIds = rounds.Select(r => r.Id).ToList();
-
-            // 7) Scores existants du trou courant
-            var existingScores = _db.Scores
-                .AsNoTracking()
-                .Where(s => roundIds.Contains(s.RoundId) && s.HoleNumber == CurrentHole)
-                .ToList();
-
-            IsHoleValidated = existingScores.Any();
-
-            var scoreByRoundId = existingScores
-                .GroupBy(s => s.RoundId)
-                .ToDictionary(g => g.Key, g => g.First().Strokes);
-
-            Players = rounds
-                .OrderBy(r => r.Player!.LastName)
-                .ThenBy(r => r.Player!.FirstName)
-                .Select(r => new PlayerScoreRow
-                {
-                    RoundId = r.Id,
-                    PlayerId = r.PlayerId,
-                    PlayerName = r.Player != null
-                        ? (r.Player.FirstName + " " + r.Player.LastName).Trim()
-                        : ("PlayerId=" + r.PlayerId),
-                    Strokes = scoreByRoundId.TryGetValue(r.Id, out var strokes) ? strokes : 0
-                })
-                .ToList();
-
-            return Page();
-        }
-
-        // =========================================================
-        // POST : Valider le trou
-        // =========================================================
-        public IActionResult OnPost([FromForm] Dictionary<int, int> Scores)
-        {
-            // recalcul lock
             IsSquadLocked = ComputeIsSquadLocked();
             if (IsSquadLocked)
             {
-                TempData["Error"] = "Squad verrouillé. Modification impossible.";
-                return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole });
-            }
-
-            var squad = _db.Squads.AsNoTracking().FirstOrDefault(s => s.Id == SquadId);
-            if (squad == null || squad.CompetitionId != CompetitionId)
-            {
-                TempData["Error"] = "Squad introuvable ou ne correspond pas à la compétition.";
-                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
+                TempData["Error"] = "Carte verrouillée.";
+                return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Token });
             }
 
             if (CurrentHole < 1 || CurrentHole > 18)
-                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
-
-            if (Scores == null || Scores.Count == 0)
             {
-                TempData["Error"] = "Aucun score reçu.";
-                return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole, edit = Edit });
+                TempData["Error"] = "Trou invalide.";
+                return RedirectToPage(new { CompetitionId, SquadId, Hole = 1, Token });
             }
 
-            if (Scores.Values.Any(v => v <= 0))
-            {
-                TempData["Error"] = "Tous les joueurs doivent avoir un score supérieur à 0.";
-                return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole, edit = Edit });
-            }
-
-            var allowedRoundIds = _db.Rounds.AsNoTracking()
+            var roundIds = _db.Rounds
                 .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
                 .Select(r => r.Id)
                 .ToHashSet();
 
-            var postedRoundIds = Scores.Keys.ToList();
-            if (postedRoundIds.Any(id => !allowedRoundIds.Contains(id)))
+            if (roundIds.Count == 0)
             {
-                TempData["Error"] = "Données invalides (round non autorisé).";
+                TempData["Error"] = "Aucun round trouvé pour ce squad.";
                 return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
             }
 
-            bool alreadyValidated = _db.Scores.Any(s => postedRoundIds.Contains(s.RoundId) && s.HoleNumber == CurrentHole);
-            if (alreadyValidated)
+            var alreadyExists = _db.Scores.Any(s =>
+                roundIds.Contains(s.RoundId) &&
+                s.HoleNumber == CurrentHole);
+
+            if (alreadyExists)
             {
-                TempData["Error"] = "Ce trou a déjà été validé.";
-                return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole, edit = Edit });
+                TempData["Error"] = "Les scores de ce trou sont déjà enregistrés.";
+                return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Token });
             }
 
             foreach (var kvp in Scores)
             {
+                if (!roundIds.Contains(kvp.Key))
+                    continue;
+
+                if (kvp.Value <= 0)
+                    continue;
+
                 _db.Scores.Add(new Score
                 {
                     RoundId = kvp.Key,
@@ -269,95 +316,16 @@ namespace AFG_Livescoring.Pages.Squads
                     Strokes = kvp.Value
                 });
             }
-            _db.SaveChanges();
-
-            // AUTO-LOCK : re-lock automatique si le squad est complet
-            AutoLockSquadIfComplete();
-
-            // Navigation
-            if (CurrentHole >= 18)
-                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
-
-            return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole + 1, edit = Edit });
-        }
-
-        // =========================================================
-        // POST : Corriger le trou
-        // =========================================================
-        public IActionResult OnPostCorrect()
-        {
-            IsSquadLocked = ComputeIsSquadLocked();
-            if (IsSquadLocked)
-            {
-                TempData["Error"] = "Squad verrouillé. Modification impossible.";
-                return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole, edit = Edit });
-            }
-
-            if (CurrentHole < 1 || CurrentHole > 18)
-                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
-
-            var roundIds = _db.Rounds.AsNoTracking()
-                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
-                .Select(r => r.Id)
-                .ToList();
-
-            if (roundIds.Count == 0)
-            {
-                TempData["Error"] = "Aucun joueur n'est affecté à ce squad.";
-                return RedirectToPage("/Squads/Manage", new { competitionId = CompetitionId });
-            }
-
-            var toDelete = _db.Scores
-                .Where(s => roundIds.Contains(s.RoundId) && s.HoleNumber == CurrentHole)
-                .ToList();
-
-            if (toDelete.Count == 0)
-            {
-                TempData["Error"] = "Aucun score à corriger sur ce trou.";
-                return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole, edit = Edit });
-            }
-
-            _db.Scores.RemoveRange(toDelete);
-            _db.SaveChanges();
-
-            TempData["Info"] = $"Trou {CurrentHole} réouvert (scores supprimés).";
-            return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole, edit = Edit });
-        }
-
-        // =========================================================
-        // POST : Déverrouiller (organisateur)
-        // =========================================================
-        public IActionResult OnPostUnlock(int competitionId, int squadId, int hole)
-        {
-            CompetitionId = competitionId;
-            SquadId = squadId;
-            CurrentHole = hole;
-
-            var rounds = _db.Rounds
-                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
-                .ToList();
-
-            if (rounds.Count == 0)
-            {
-                TempData["Error"] = "Aucun round trouvé pour ce squad.";
-                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
-            }
-
-            foreach (var r in rounds)
-                r.IsLocked = false;
 
             _db.SaveChanges();
 
-            TempData["Info"] = "Squad déverrouillé (mode correction).";
-            // IMPORTANT : on arrive en mode correction pour éviter le re-lock immédiat
-            return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = CurrentHole, edit = true });
-        }
-
-        // Sécurité : si quelqu'un appelle Unlock en GET
-        public IActionResult OnGetUnlock()
-        {
-            TempData["Error"] = "Déverrouillage uniquement en POST.";
-            return RedirectToPage("/Squads/Score", new { competitionId = CompetitionId, squadId = SquadId, hole = Hole });
+            return RedirectToPage(new
+            {
+                CompetitionId,
+                SquadId,
+                Hole = CurrentHole < 18 ? CurrentHole + 1 : 18,
+                Token
+            });
         }
     }
 }

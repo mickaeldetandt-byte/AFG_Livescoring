@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
@@ -5,6 +6,7 @@ using AFG_Livescoring.Models;
 
 namespace AFG_Livescoring.Pages.Admin
 {
+    [Authorize(Roles = "Admin")]
     public class DbViewModel : PageModel
     {
         private readonly AppDbContext _db;
@@ -29,15 +31,14 @@ namespace AFG_Livescoring.Pages.Admin
         public List<Round> Rounds { get; set; } = new();
         public List<Score> Scores { get; set; } = new();
 
-        // ✅ NEW
         public List<Squad> Squads { get; set; } = new();
 
         public void OnGet()
         {
-            // ✅ DB path réel (preuve béton)
+            // DB path réel
             DbPath = _db.Database.GetDbConnection().DataSource;
 
-            // ✅ Liste des tables SQLite (preuve que Squads existe)
+            // Liste des tables SQLite
             using (var con = new SqliteConnection($"Data Source={DbPath}"))
             {
                 con.Open();
@@ -64,7 +65,7 @@ namespace AFG_Livescoring.Pages.Admin
                 .AsNoTracking()
                 .Include(r => r.Player)
                 .Include(r => r.Competition)
-                .Include(r => r.Squad)   // ✅ NEW
+                .Include(r => r.Squad)
                 .OrderByDescending(r => r.Id)
                 .ToList();
 
@@ -78,7 +79,6 @@ namespace AFG_Livescoring.Pages.Admin
                 .Take(200)
                 .ToList();
 
-            // ✅ NEW
             Squads = _db.Squads
                 .AsNoTracking()
                 .Include(s => s.Competition)

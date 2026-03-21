@@ -1,0 +1,128 @@
+﻿@page
+@model AFG_Livescoring.Pages.Players.StatsModel
+@{
+    ViewData["Title"] = "Statistiques joueurs";
+}
+
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Statistiques joueurs</h2>
+            <div class="text-muted">Vue globale des performances et de l’historique</div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <a asp-page="/Players/Index" class="btn btn-outline-secondary">
+                Retour joueurs
+            </a>
+            <a asp-page="/Players/Ranking" class="btn btn-outline-dark">
+                Classement club
+            </a>
+        </div>
+    </div>
+
+    @if (Model.PlayersStats == null || Model.PlayersStats.Count == 0)
+    {
+        <div class="alert alert-info">
+            Aucun joueur actif ou aucune donnée disponible.
+        </div>
+    }
+    else
+    {
+        foreach (var player in Model.PlayersStats)
+        {
+            bool hasCompletedRounds = player.CompletedRoundsCount > 0;
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>@player.PlayerName</strong>
+                    </div>
+                    <div>
+                        <a asp-page="/Players/Details"
+                           asp-route-id="@player.PlayerId"
+                           class="btn btn-sm btn-outline-primary">
+                            Ouvrir le profil
+                        </a>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <div class="border rounded p-3 h-100">
+                                <div class="text-muted small">Compétitions jouées</div>
+                                <div class="fs-4 fw-bold">@player.CompetitionsCount</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="border rounded p-3 h-100">
+                                <div class="text-muted small">Cartes complètes</div>
+                                <div class="fs-4 fw-bold">@player.CompletedRoundsCount</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="border rounded p-3 h-100">
+                                <div class="text-muted small">Moyenne coups</div>
+                                <div class="fs-4 fw-bold">
+                                    @(hasCompletedRounds? player.AverageStrokes.ToString("0.0") : "-")
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3">
+                            <div class="border rounded p-3 h-100">
+                                <div class="text-muted small">Meilleure carte</div>
+                                <div class="fs-4 fw-bold">
+                                    @(hasCompletedRounds? player.BestStrokes.ToString() : "-")
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <strong>Moyenne vs Par :</strong>
+                        @Model.FormatToPar(player.AverageToPar, hasCompletedRounds)
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Compétition</th>
+                                    <th>Mode</th>
+                                    <th>Trous</th>
+                                    <th>Coups</th>
+                                    <th>Par joué</th>
+                                    <th>± Par</th>
+                                    <th>Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in player.History)
+                                {
+                                    bool hasScore = row.HolesPlayed > 0;
+
+                                    <tr>
+                                        <td>@row.CompetitionDate.ToString("dd/MM/yyyy")</td>
+                                        <td>@row.CompetitionName</td>
+                                        <td>@row.Mode</td>
+                                        <td>@row.HolesPlayed</td>
+                                        <td>@(hasScore? row.TotalStrokes.ToString() : "-")</td>
+                                        <td>@(hasScore? row.TotalPar.ToString() : "-")</td>
+                                        <td>@Model.FormatToParInt(row.ToPar, hasScore)</td>
+                                        <td>@(row.IsComplete ? "Terminé" : "Incomplet")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>

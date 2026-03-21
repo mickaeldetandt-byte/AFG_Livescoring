@@ -1,0 +1,80 @@
+﻿@page
+@model AFG_Livescoring.Pages.Competitions.ResultsModel
+@{
+    ViewData["Title"] = "Historique des compétitions";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Historique des compétitions</h2>
+            <div class="text-muted">Consulte les résultats des compétitions jouées</div>
+        </div>
+
+        <a asp-page="/Competitions/Index" class="btn btn-outline-secondary">
+            Retour
+        </a>
+    </div>
+
+    @if (!Model.Competitions.Any())
+    {
+        <div class="alert alert-info">
+            Aucune compétition trouvée.
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Date</th>
+                                <th>Mode</th>
+                                <th>Parcours</th>
+                                <th>Joueurs</th>
+                                <th>État</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in Model.Competitions)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">@item.Name</td>
+                                    <td>@item.Date.ToString("dd/MM/yyyy")</td>
+                                    <td>@item.Mode</td>
+                                    <td>@item.CourseName</td>
+                                    <td>@item.PlayerCount</td>
+                                    <td>
+                                        @if (item.IsFinished)
+                                        {
+                                            <span class="badge bg-success">Terminée</span>
+                                        }
+                                        else if (item.HasStarted)
+                                        {
+                                            <span class="badge bg-warning text-dark">En cours</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Non démarrée</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <a asp-page="/Competitions/ResultsDetails"
+                                           asp-route-competitionId="@item.Id"
+                                           class="btn btn-sm btn-primary">
+                                            Voir résultats
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
