@@ -4,35 +4,33 @@
 
 namespace AFG_Livescoring.Migrations
 {
-    /// <inheritdoc />
     public partial class AddCompetitionStatusVisibility : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<int>(
                 name: "ClubId",
                 table: "Competitions",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "CreatedByUserId",
                 table: "Competitions",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "Status",
                 table: "Competitions",
-                type: "INTEGER",
+                type: "int",
                 nullable: false,
                 defaultValue: 0);
 
             migrationBuilder.AddColumn<int>(
                 name: "Visibility",
                 table: "Competitions",
-                type: "INTEGER",
+                type: "int",
                 nullable: false,
                 defaultValue: 0);
 
@@ -51,17 +49,18 @@ namespace AFG_Livescoring.Migrations
                 table: "Competitions",
                 column: "CreatedByUserId",
                 principalTable: "AppUsers",
-                principalColumn: "Id");
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
 
             migrationBuilder.AddForeignKey(
                 name: "FK_Competitions_Clubs_ClubId",
                 table: "Competitions",
                 column: "ClubId",
                 principalTable: "Clubs",
-                principalColumn: "Id");
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(

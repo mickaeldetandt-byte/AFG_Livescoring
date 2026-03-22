@@ -4,54 +4,51 @@
 
 namespace AFG_Livescoring.Migrations
 {
-    /// <inheritdoc />
     public partial class AddFourballScores : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AlterColumn<int>(
                 name: "TeamBScore",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: true,
                 oldClrType: typeof(int),
-                oldType: "INTEGER");
+                oldType: "int");
 
             migrationBuilder.AlterColumn<int>(
                 name: "TeamAScore",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: true,
                 oldClrType: typeof(int),
-                oldType: "INTEGER");
+                oldType: "int");
 
             migrationBuilder.AddColumn<int>(
                 name: "TeamAPlayer1Score",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "TeamAPlayer2Score",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "TeamBPlayer1Score",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "TeamBPlayer2Score",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
@@ -73,21 +70,21 @@ namespace AFG_Livescoring.Migrations
             migrationBuilder.AlterColumn<int>(
                 name: "TeamBScore",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: false,
                 defaultValue: 0,
                 oldClrType: typeof(int),
-                oldType: "INTEGER",
+                oldType: "int",
                 oldNullable: true);
 
             migrationBuilder.AlterColumn<int>(
                 name: "TeamAScore",
                 table: "MatchPlayHoleResults",
-                type: "INTEGER",
+                type: "int",
                 nullable: false,
                 defaultValue: 0,
                 oldClrType: typeof(int),
-                oldType: "INTEGER",
+                oldType: "int",
                 oldNullable: true);
         }
     }

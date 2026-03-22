@@ -4,20 +4,26 @@
 
 namespace AFG_Livescoring.Migrations
 {
-    /// <inheritdoc />
     public partial class Phase9_Doubles_Base : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_Scores_RoundId",
-                table: "Scores");
+            migrationBuilder.Sql(@"
+IF EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'IX_Scores_RoundId'
+      AND object_id = OBJECT_ID('[Scores]')
+)
+BEGIN
+    DROP INDEX [IX_Scores_RoundId] ON [Scores];
+END
+");
 
             migrationBuilder.AddColumn<int>(
                 name: "CompetitionType",
                 table: "Competitions",
-                type: "INTEGER",
+                type: "int",
                 nullable: false,
                 defaultValue: 0);
 
@@ -25,12 +31,12 @@ namespace AFG_Livescoring.Migrations
                 name: "Teams",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    CompetitionId = table.Column<int>(type: "INTEGER", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", maxLength: 80, nullable: false),
-                    SquadId = table.Column<int>(type: "INTEGER", nullable: true),
-                    IsActive = table.Column<bool>(type: "INTEGER", nullable: false)
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    CompetitionId = table.Column<int>(type: "int", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    SquadId = table.Column<int>(type: "int", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -53,11 +59,11 @@ namespace AFG_Livescoring.Migrations
                 name: "TeamPlayers",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    TeamId = table.Column<int>(type: "INTEGER", nullable: false),
-                    PlayerId = table.Column<int>(type: "INTEGER", nullable: false),
-                    Order = table.Column<int>(type: "INTEGER", nullable: false)
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TeamId = table.Column<int>(type: "int", nullable: false),
+                    PlayerId = table.Column<int>(type: "int", nullable: false),
+                    Order = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -80,12 +86,12 @@ namespace AFG_Livescoring.Migrations
                 name: "TeamRounds",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    CompetitionId = table.Column<int>(type: "INTEGER", nullable: false),
-                    TeamId = table.Column<int>(type: "INTEGER", nullable: false),
-                    SquadId = table.Column<int>(type: "INTEGER", nullable: true),
-                    IsLocked = table.Column<bool>(type: "INTEGER", nullable: false)
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    CompetitionId = table.Column<int>(type: "int", nullable: false),
+                    TeamId = table.Column<int>(type: "int", nullable: false),
+                    SquadId = table.Column<int>(type: "int", nullable: true),
+                    IsLocked = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -114,11 +120,11 @@ namespace AFG_Livescoring.Migrations
                 name: "TeamScores",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    TeamRoundId = table.Column<int>(type: "INTEGER", nullable: false),
-                    HoleNumber = table.Column<int>(type: "INTEGER", nullable: false),
-                    Strokes = table.Column<int>(type: "INTEGER", nullable: false)
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TeamRoundId = table.Column<int>(type: "int", nullable: false),
+                    HoleNumber = table.Column<int>(type: "int", nullable: false),
+                    Strokes = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -186,7 +192,6 @@ namespace AFG_Livescoring.Migrations
                 unique: true);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
@@ -200,10 +205,6 @@ namespace AFG_Livescoring.Migrations
 
             migrationBuilder.DropTable(
                 name: "Teams");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Scores_RoundId_HoleNumber",
-                table: "Scores");
 
             migrationBuilder.DropColumn(
                 name: "CompetitionType",

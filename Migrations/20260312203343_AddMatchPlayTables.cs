@@ -14,17 +14,17 @@ namespace AFG_Livescoring.Migrations
                 name: "MatchPlayRounds",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    CompetitionId = table.Column<int>(type: "INTEGER", nullable: false),
-                    SquadId = table.Column<int>(type: "INTEGER", nullable: false),
-                    TeamAId = table.Column<int>(type: "INTEGER", nullable: false),
-                    TeamBId = table.Column<int>(type: "INTEGER", nullable: false),
-                    CurrentHole = table.Column<int>(type: "INTEGER", nullable: false),
-                    IsFinished = table.Column<bool>(type: "INTEGER", nullable: false),
-                    WinnerTeamId = table.Column<int>(type: "INTEGER", nullable: true),
-                    StatusText = table.Column<string>(type: "TEXT", nullable: false),
-                    ResultText = table.Column<string>(type: "TEXT", nullable: false)
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    CompetitionId = table.Column<int>(type: "int", nullable: false),
+                    SquadId = table.Column<int>(type: "int", nullable: false),
+                    TeamAId = table.Column<int>(type: "int", nullable: false),
+                    TeamBId = table.Column<int>(type: "int", nullable: false),
+                    CurrentHole = table.Column<int>(type: "int", nullable: false),
+                    IsFinished = table.Column<bool>(type: "bit", nullable: false),
+                    WinnerTeamId = table.Column<int>(type: "int", nullable: true),
+                    StatusText = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false, defaultValue: ""),
+                    ResultText = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false, defaultValue: "")
                 },
                 constraints: table =>
                 {
@@ -65,14 +65,14 @@ namespace AFG_Livescoring.Migrations
                 name: "MatchPlayHoleResults",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    MatchPlayRoundId = table.Column<int>(type: "INTEGER", nullable: false),
-                    HoleNumber = table.Column<int>(type: "INTEGER", nullable: false),
-                    TeamAScore = table.Column<int>(type: "INTEGER", nullable: false),
-                    TeamBScore = table.Column<int>(type: "INTEGER", nullable: false),
-                    WinnerTeamId = table.Column<int>(type: "INTEGER", nullable: true),
-                    IsHalved = table.Column<bool>(type: "INTEGER", nullable: false)
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    MatchPlayRoundId = table.Column<int>(type: "int", nullable: false),
+                    HoleNumber = table.Column<int>(type: "int", nullable: false),
+                    TeamAScore = table.Column<int>(type: "int", nullable: false),
+                    TeamBScore = table.Column<int>(type: "int", nullable: false),
+                    WinnerTeamId = table.Column<int>(type: "int", nullable: true),
+                    IsHalved = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {

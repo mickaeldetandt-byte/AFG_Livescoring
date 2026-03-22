@@ -4,20 +4,18 @@
 
 namespace AFG_Livescoring.Migrations
 {
-    /// <inheritdoc />
     public partial class AddRoundPublicToken : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
                 name: "PublicToken",
                 table: "Rounds",
-                type: "TEXT",
+                type: "nvarchar(100)",
+                maxLength: 100,
                 nullable: true);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(

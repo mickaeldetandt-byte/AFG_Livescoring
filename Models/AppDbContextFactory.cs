@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using System;
 using System.IO;
 
 namespace AFG_Livescoring.Models
@@ -9,7 +10,7 @@ namespace AFG_Livescoring.Models
     {
         public AppDbContext CreateDbContext(string[] args)
         {
-            var environment = System.Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+            var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
 
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
@@ -18,17 +19,17 @@ namespace AFG_Livescoring.Models
                 .AddEnvironmentVariables()
                 .Build();
 
-            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
             var cs = configuration.GetConnectionString("DefaultConnection");
 
-            if (environment == "Development")
+            if (string.IsNullOrWhiteSpace(cs))
             {
-                optionsBuilder.UseSqlite(cs);
+                throw new InvalidOperationException("La chaîne de connexion 'DefaultConnection' est introuvable.");
             }
-            else
-            {
-                optionsBuilder.UseSqlServer(cs);
-            }
+
+            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+
+            // SQL Server partout : local + Azure
+            optionsBuilder.UseSqlServer(cs);
 
             return new AppDbContext(optionsBuilder.Options);
         }

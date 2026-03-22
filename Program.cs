@@ -15,17 +15,14 @@ builder.Services.AddRazorPages();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-builder.Services.AddDbContext<AppDbContext>(options =>
+if (string.IsNullOrWhiteSpace(connectionString))
 {
-    if (builder.Environment.IsDevelopment())
-    {
-        options.UseSqlite(connectionString);
-    }
-    else
-    {
-        options.UseSqlServer(connectionString);
-    }
-});
+    throw new InvalidOperationException("La chaîne de connexion 'DefaultConnection' est introuvable.");
+}
+
+// SQL Server partout : local + Azure
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(connectionString));
 
 var app = builder.Build();
 
@@ -33,50 +30,54 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    // 🔹 Création des comptes par défaut
-    if (!db.AppUsers.Any(u => u.Email == "admin@afg.local"))
+    try
     {
-        db.AppUsers.Add(new AppUser
+        Console.WriteLine("AFG STARTUP TEST V1.0.3");
+
+        db.Database.Migrate();
+
+        if (!db.AppUsers.Any(u => u.Email == "admin@afg.local"))
         {
-            Email = "admin@afg.local",
-            PasswordHash = "admin123",
-            Role = "Admin",
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        });
-    }
+            db.AppUsers.Add(new AppUser
+            {
+                Email = "admin@afg.local",
+                PasswordHash = "admin123",
+                Role = "Admin",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
 
-    if (!db.AppUsers.Any(u => u.Email == "club@afg.local"))
-    {
-        db.AppUsers.Add(new AppUser
+        if (!db.AppUsers.Any(u => u.Email == "club@afg.local"))
         {
-            Email = "club@afg.local",
-            PasswordHash = "club123",
-            Role = "Club",
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        });
-    }
+            db.AppUsers.Add(new AppUser
+            {
+                Email = "club@afg.local",
+                PasswordHash = "club123",
+                Role = "Club",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
 
-    db.SaveChanges();
+        var roundsWithoutToken = db.Rounds
+            .Where(r => string.IsNullOrEmpty(r.PublicToken))
+            .ToList();
 
-    // 🔥 NOUVEAU : génération des tokens invités pour les rounds
-    var roundsWithoutToken = db.Rounds
-        .Where(r => r.PublicToken == null || r.PublicToken == "")
-        .ToList();
+        foreach (var round in roundsWithoutToken)
+        {
+            round.PublicToken = Guid.NewGuid().ToString("N");
+        }
 
-    foreach (var round in roundsWithoutToken)
-    {
-        round.PublicToken = Guid.NewGuid().ToString("N");
-    }
-
-    if (roundsWithoutToken.Any())
-    {
         db.SaveChanges();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Erreur au démarrage de l'application : " + ex);
+        throw;
     }
 }
 
-// Configure pipeline
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");

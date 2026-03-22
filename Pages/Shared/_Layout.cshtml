@@ -24,14 +24,12 @@
 
                 <div class="collapse navbar-collapse" id="mainNavbar">
 
-                    <!-- MENU GAUCHE -->
                     <ul class="navbar-nav me-auto">
 
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-page="/Index">Accueil</a>
                         </li>
 
-                        <!-- 🔥 PUBLIC → visible pour tous -->
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-page="/Competitions/Public">Live</a>
                         </li>
@@ -45,15 +43,21 @@
                                 </li>
 
                                 <li class="nav-item">
-                                    <a class="nav-link text-dark" asp-page="/Competitions">Compétitions</a>
+                                    <a class="nav-link text-dark" href="/Courses">Parcours</a>
                                 </li>
 
                                 <li class="nav-item">
-                                    <a class="nav-link text-dark" asp-page="/Admin/DbView">Base</a>
+                                    <a class="nav-link text-dark" asp-page="/Competitions">Compétitions</a>
                                 </li>
+
+
                             }
                             else if (User.IsInRole("Club"))
                             {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" href="/Courses">Parcours</a>
+                                </li>
+
                                 <li class="nav-item">
                                     <a class="nav-link text-dark" asp-page="/Competitions">Compétitions</a>
                                 </li>
@@ -62,7 +66,6 @@
 
                     </ul>
 
-                    <!-- MENU DROIT -->
                     <div class="d-flex align-items-center gap-2 mt-2 mt-sm-0">
 
                         @if (User.Identity != null && User.Identity.IsAuthenticated)
