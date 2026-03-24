@@ -20,6 +20,9 @@ namespace AFG_Livescoring.Pages
         [BindProperty(SupportsGet = true)]
         public int matchId { get; set; }
 
+        [BindProperty(SupportsGet = true)]
+        public int? EditHole { get; set; }
+
         [BindProperty]
         public int TeamAScore { get; set; }
 
@@ -60,6 +63,8 @@ namespace AFG_Livescoring.Pages
             || Match?.Competition?.CompetitionType == CompetitionType.MatchPlayFoursome
             || Match?.Competition?.CompetitionType == CompetitionType.MatchPlayFourball;
 
+        public int DisplayHole => EditHole ?? Match?.CurrentHole ?? 1;
+
         private IActionResult RedirectFinishedCompetition()
         {
             TempData["Message"] = "La compétition est terminée. Le scoring est verrouillé.";
@@ -71,11 +76,37 @@ namespace AFG_Livescoring.Pages
             if (!LoadData())
                 return RedirectToPage("/Competitions");
 
-            IsCompetitionFinished = Match?.Competition?.Status == CompetitionStatus.Finished;
+            if (Match == null)
+                return RedirectToPage("/Competitions");
+
+            IsCompetitionFinished = Match.Competition?.Status == CompetitionStatus.Finished;
 
             if (IsCompetitionFinished)
             {
                 TempData["Message"] = "La compétition est terminée. Le scoring est verrouillé.";
+            }
+
+            if (EditHole.HasValue)
+            {
+                if (EditHole.Value < 1 || EditHole.Value > 18)
+                {
+                    TempData["Message"] = "Trou à corriger invalide.";
+                    return RedirectToPage("/MatchPlayScore", new { matchId });
+                }
+
+                var existing = HoleResults.FirstOrDefault(h => h.HoleNumber == EditHole.Value);
+                if (existing == null)
+                {
+                    TempData["Message"] = $"Aucun résultat enregistré pour le trou {EditHole.Value}.";
+                    return RedirectToPage("/MatchPlayScore", new { matchId });
+                }
+
+                TeamAScore = existing.TeamAScore ?? 0;
+                TeamBScore = existing.TeamBScore ?? 0;
+                TeamAPlayer1Score = existing.TeamAPlayer1Score ?? 0;
+                TeamAPlayer2Score = existing.TeamAPlayer2Score ?? 0;
+                TeamBPlayer1Score = existing.TeamBPlayer1Score ?? 0;
+                TeamBPlayer2Score = existing.TeamBPlayer2Score ?? 0;
             }
 
             return Page();
@@ -95,36 +126,46 @@ namespace AFG_Livescoring.Pages
             if (Match.Competition?.Status == CompetitionStatus.Finished)
                 return RedirectFinishedCompetition();
 
-            if (Match.CurrentHole > 18 || Match.IsFinished)
+            int targetHole = EditHole ?? Match.CurrentHole;
+
+            if (targetHole < 1 || targetHole > 18)
             {
-                TempData["Message"] = "Le match est déjà terminé.";
+                TempData["Message"] = "Trou invalide.";
                 return RedirectToPage("/MatchPlayScore", new { matchId });
             }
 
-            int currentHole = Match.CurrentHole;
+            if (!EditHole.HasValue && Match.CurrentHole > 18)
+            {
+                TempData["Message"] = "Tous les trous ont déjà été saisis.";
+                return RedirectToPage("/MatchPlayScore", new { matchId });
+            }
 
-            bool alreadyExists = _db.MatchPlayHoleResults.Any(h =>
+            var existing = _db.MatchPlayHoleResults.FirstOrDefault(h =>
                 h.MatchPlayRoundId == matchId &&
-                h.HoleNumber == currentHole);
+                h.HoleNumber == targetHole);
 
-            if (alreadyExists)
+            MatchPlayHoleResult holeResult;
+
+            if (existing == null)
             {
-                TempData["Message"] = $"Le trou {currentHole} a déjà été saisi.";
-                return RedirectToPage("/MatchPlayScore", new { matchId });
+                holeResult = new MatchPlayHoleResult
+                {
+                    MatchPlayRoundId = matchId,
+                    HoleNumber = targetHole
+                };
+                _db.MatchPlayHoleResults.Add(holeResult);
             }
-
-            var holeResult = new MatchPlayHoleResult
+            else
             {
-                MatchPlayRoundId = matchId,
-                HoleNumber = currentHole
-            };
+                holeResult = existing;
+            }
 
             if (IsFourballMatchPlay)
             {
                 if (TeamAPlayer1Score <= 0 || TeamAPlayer2Score <= 0 || TeamBPlayer1Score <= 0 || TeamBPlayer2Score <= 0)
                 {
                     TempData["Message"] = "Les 4 scores joueurs doivent être supérieurs à 0.";
-                    return RedirectToPage("/MatchPlayScore", new { matchId });
+                    return RedirectToPage("/MatchPlayScore", new { matchId, EditHole });
                 }
 
                 int bestA = Math.Min(TeamAPlayer1Score, TeamAPlayer2Score);
@@ -159,7 +200,7 @@ namespace AFG_Livescoring.Pages
                 if (TeamAScore <= 0 || TeamBScore <= 0)
                 {
                     TempData["Message"] = "Les scores doivent être supérieurs à 0.";
-                    return RedirectToPage("/MatchPlayScore", new { matchId });
+                    return RedirectToPage("/MatchPlayScore", new { matchId, EditHole });
                 }
 
                 holeResult.TeamAScore = TeamAScore;
@@ -170,7 +211,6 @@ namespace AFG_Livescoring.Pages
                     : (TeamAScore < TeamBScore ? Match.TeamAId : Match.TeamBId);
             }
 
-            _db.MatchPlayHoleResults.Add(holeResult);
             _db.SaveChanges();
 
             var allResults = _db.MatchPlayHoleResults
@@ -183,25 +223,35 @@ namespace AFG_Livescoring.Pages
             Match.StatusText = summary.StatusText;
             Match.ResultText = summary.ResultText;
             Match.WinnerTeamId = summary.WinnerTeamId;
-            Match.IsFinished = summary.IsFinished;
 
-            if (summary.IsFinished)
+            if (!EditHole.HasValue)
             {
-                Match.CurrentHole = currentHole;
-            }
-            else if (Match.CurrentHole < 18)
-            {
-                Match.CurrentHole++;
+                if (targetHole < 18)
+                {
+                    Match.CurrentHole = targetHole + 1;
+                    Match.IsFinished = false;
+                }
+                else
+                {
+                    Match.CurrentHole = 18;
+                    Match.IsFinished = true;
+                }
             }
             else
             {
-                Match.CurrentHole = 18;
-                Match.IsFinished = true;
+                if (allResults.Count >= 18)
+                {
+                    Match.IsFinished = true;
+                    Match.CurrentHole = 18;
+                }
             }
 
             _db.SaveChanges();
 
-            TempData["Message"] = $"Trou {currentHole} enregistré.";
+            TempData["Message"] = existing == null
+                ? $"Trou {targetHole} enregistré."
+                : $"Trou {targetHole} corrigé.";
+
             return RedirectToPage("/MatchPlayScore", new { matchId });
         }
 

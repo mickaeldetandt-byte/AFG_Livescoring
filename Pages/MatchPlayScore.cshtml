@@ -4,235 +4,344 @@
     ViewData["Title"] = "Score Match Play";
 }
 
-<div class="container mt-4">
+<style>
+    .mp-page {
+        max-width: 1100px;
+        margin: 0 auto;
+    }
+
+    .mp-card {
+        border-radius: 18px;
+    }
+
+    .score-box {
+        font-size: 2rem;
+        font-weight: 800;
+        min-width: 52px;
+        text-align: center;
+    }
+
+    .score-btn {
+        width: 52px;
+        height: 52px;
+        font-size: 1.8rem;
+        border-radius: 14px;
+        padding: 0;
+    }
+
+    .action-btn {
+        min-height: 52px;
+        border-radius: 14px;
+        font-weight: 700;
+    }
+
+    .edit-badge {
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="container mt-4 mb-4 mp-page">
 
     @if (TempData["Message"] != null)
     {
-        <div class="alert alert-info">
-            @TempData["Message"]
-        </div>
+        <div class="alert alert-info shadow-sm">@TempData["Message"]</div>
     }
 
-    @if (TempData["Error"] != null)
-    {
-        <div class="alert alert-danger">
-            @TempData["Error"]
-        </div>
-    }
-
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
         <div>
             <h2 class="mb-1">Score Match Play</h2>
             <div class="text-muted">@Model.CompetitionName</div>
         </div>
-        <div>
-            <a asp-page="/Leaderboard" asp-route-competitionId="@Model.Match?.CompetitionId" class="btn btn-outline-secondary">
-                Retour leaderboard
-            </a>
+
+        <a class="btn btn-outline-secondary action-btn"
+               href="/Leaderboard?competitionId=@Model.Match?.CompetitionId">
+            Retour leaderboard
+        </a>
+    </div>
+
+    <div class="card shadow-sm mp-card mb-4">
+        <div class="card-body">
+            <div class="row text-center text-md-start align-items-center">
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <div class="fw-bold">Équipe A</div>
+                    <div>@Model.TeamAName</div>
+                </div>
+
+                <div class="col-md-4 mb-3 mb-md-0 text-center">
+                    <div class="fw-bold">Trou</div>
+                    <div class="fs-2 fw-bold">@Model.DisplayHole</div>
+
+                    @if (Model.EditHole.HasValue)
+                    {
+                        <div class="mt-2">
+                            <span class="badge bg-warning text-dark edit-badge">MODE CORRECTION</span>
+                        </div>
+                    }
+                    else if (Model.Match?.IsFinished == true)
+                    {
+                        <div class="mt-2">
+                            <span class="badge bg-success edit-badge">PARTIE TERMINÉE</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="col-md-4 text-md-end">
+                    <div class="fw-bold">Équipe B</div>
+                    <div>@Model.TeamBName</div>
+                </div>
+            </div>
+
+            <hr />
+
+            <div class="row">
+                <div class="col-md-4">
+                    <strong>Statut :</strong> @Model.Match?.StatusText
+                </div>
+                <div class="col-md-4">
+                    <strong>Résultat :</strong> @Model.Match?.ResultText
+                </div>
+                <div class="col-md-4">
+                    <strong>Terminé :</strong> @(Model.Match?.IsFinished == true ? "Oui" : "Non")
+                </div>
+            </div>
         </div>
     </div>
 
-    @if (Model.Match == null)
-    {
-        <div class="alert alert-warning">
-            Match introuvable.
-        </div>
-    }
-    else
-    {
-        <div class="card mb-4 shadow-sm">
-            <div class="card-body">
-                <div class="row g-3">
-                    <div class="col-md-5">
-                        <div class="fw-bold">Équipe A</div>
-                        <div>@Model.TeamAName</div>
-                    </div>
-                    <div class="col-md-2 text-center">
-                        <div class="fw-bold">Trou</div>
-                        <div class="fs-4">@Model.Match.CurrentHole</div>
-                    </div>
-                    <div class="col-md-5 text-md-end">
-                        <div class="fw-bold">Équipe B</div>
-                        <div>@Model.TeamBName</div>
-                    </div>
-                </div>
-
-                <hr />
-
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <div><strong>Statut :</strong> @Model.Match.StatusText</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div><strong>Résultat :</strong> @(string.IsNullOrWhiteSpace(Model.Match.ResultText) ? "-" : Model.Match.ResultText)</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div><strong>Terminé :</strong> @(Model.Match.IsFinished ? "Oui" : "Non")</div>
-                    </div>
-                </div>
-            </div>
+    <div class="card shadow-sm mp-card mb-4">
+        <div class="card-header fw-bold">
+            @if (Model.EditHole.HasValue)
+            {
+                @($"Correction du trou {Model.DisplayHole}")
+            }
+            else if (Model.Match?.IsFinished == true)
+            {
+                @("Partie terminée")
+            }
+            else
+            {
+                @($"Saisie du trou {Model.DisplayHole}")
+            }
         </div>
 
-        @if (!Model.Match.IsFinished && Model.Match.CurrentHole <= 18)
-        {
-            <div class="card mb-4 shadow-sm">
-                <div class="card-header">
-                    <strong>Saisie du trou @Model.Match.CurrentHole</strong>
+        <div class="card-body">
+
+            @if (Model.Match?.IsFinished == true && !Model.EditHole.HasValue)
+            {
+                <div class="alert alert-success">
+                    La partie est terminée. Le trou 18 a bien été enregistré.
                 </div>
-                <div class="card-body">
-                    <form method="post">
-                        <input type="hidden" asp-for="matchId" />
 
-                        @if (Model.IsFourballMatchPlay)
-                        {
-                            <div class="row g-4">
-                                <div class="col-md-6">
-                                    <div class="border rounded p-3 h-100">
-                                        <h5 class="mb-3">Équipe A</h5>
+                <div class="d-grid gap-2">
+                    <a class="btn btn-primary action-btn"
+                           href="/Leaderboard?competitionId=@Model.Match?.CompetitionId">
+                        Retour leaderboard
+                    </a>
+                </div>
+            }
+            else
+            {
+                <form method="post">
+                    <input type="hidden" asp-for="matchId" />
+                    <input type="hidden" asp-for="EditHole" />
+
+                    @if (Model.IsFourballMatchPlay)
+                    {
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h4 class="mb-3">Équipe A</h4>
 
                                         <div class="mb-3">
-                                            <label asp-for="TeamAPlayer1Score" class="form-label">@Model.TeamAPlayer1Name</label>
-                                            <input asp-for="TeamAPlayer1Score" type="number" min="1" class="form-control form-control-lg" />
+                                            <label class="form-label">@Model.TeamAPlayer1Name</label>
+                                            <div class="d-flex align-items-center gap-3">
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="decrement('TeamAPlayer1Score')">−</button>
+                                                <input asp-for="TeamAPlayer1Score" class="form-control text-center score-box" min="1" max="10" />
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="increment('TeamAPlayer1Score')">+</button>
+                                            </div>
                                         </div>
 
-                                        <div class="mb-3">
-                                            <label asp-for="TeamAPlayer2Score" class="form-label">@Model.TeamAPlayer2Name</label>
-                                            <input asp-for="TeamAPlayer2Score" type="number" min="1" class="form-control form-control-lg" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="col-md-6">
-                                    <div class="border rounded p-3 h-100">
-                                        <h5 class="mb-3">Équipe B</h5>
-
-                                        <div class="mb-3">
-                                            <label asp-for="TeamBPlayer1Score" class="form-label">@Model.TeamBPlayer1Name</label>
-                                            <input asp-for="TeamBPlayer1Score" type="number" min="1" class="form-control form-control-lg" />
-                                        </div>
-
-                                        <div class="mb-3">
-                                            <label asp-for="TeamBPlayer2Score" class="form-label">@Model.TeamBPlayer2Name</label>
-                                            <input asp-for="TeamBPlayer2Score" type="number" min="1" class="form-control form-control-lg" />
+                                        <div class="mb-0">
+                                            <label class="form-label">@Model.TeamAPlayer2Name</label>
+                                            <div class="d-flex align-items-center gap-3">
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="decrement('TeamAPlayer2Score')">−</button>
+                                                <input asp-for="TeamAPlayer2Score" class="form-control text-center score-box" min="1" max="10" />
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="increment('TeamAPlayer2Score')">+</button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        }
-                        else
-                        {
-                            <div class="row g-4">
-                                <div class="col-md-6">
-                                    <div class="border rounded p-3 h-100">
-                                        <h5 class="mb-3">Équipe A</h5>
-                                        <div class="text-muted mb-2">@Model.TeamAName</div>
 
-                                        <label asp-for="TeamAScore" class="form-label">Score équipe A</label>
-                                        <input asp-for="TeamAScore" type="number" min="1" class="form-control form-control-lg" />
-                                    </div>
-                                </div>
+                            <div class="col-lg-6">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h4 class="mb-3">Équipe B</h4>
 
-                                <div class="col-md-6">
-                                    <div class="border rounded p-3 h-100">
-                                        <h5 class="mb-3">Équipe B</h5>
-                                        <div class="text-muted mb-2">@Model.TeamBName</div>
+                                        <div class="mb-3">
+                                            <label class="form-label">@Model.TeamBPlayer1Name</label>
+                                            <div class="d-flex align-items-center gap-3">
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="decrement('TeamBPlayer1Score')">−</button>
+                                                <input asp-for="TeamBPlayer1Score" class="form-control text-center score-box" min="1" max="10" />
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="increment('TeamBPlayer1Score')">+</button>
+                                            </div>
+                                        </div>
 
-                                        <label asp-for="TeamBScore" class="form-label">Score équipe B</label>
-                                        <input asp-for="TeamBScore" type="number" min="1" class="form-control form-control-lg" />
+                                        <div class="mb-0">
+                                            <label class="form-label">@Model.TeamBPlayer2Name</label>
+                                            <div class="d-flex align-items-center gap-3">
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="decrement('TeamBPlayer2Score')">−</button>
+                                                <input asp-for="TeamBPlayer2Score" class="form-control text-center score-box" min="1" max="10" />
+                                                <button type="button" class="btn btn-outline-secondary score-btn" onclick="increment('TeamBPlayer2Score')">+</button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        }
-
-                        <div class="mt-4 d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                Enregistrer le trou @Model.Match.CurrentHole
-                            </button>
                         </div>
-                    </form>
-                </div>
-            </div>
-        }
-        else
-        {
-            <div class="alert alert-success">
-                Ce match est terminé.
-            </div>
-        }
+                    }
+                    else
+                    {
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h4 class="mb-2">Équipe A</h4>
+                                        <div class="text-muted mb-3">@Model.TeamAName</div>
 
-        <div class="card shadow-sm">
-            <div class="card-header">
-                <strong>Historique des trous</strong>
-            </div>
-            <div class="card-body p-0">
-                @if (Model.HoleResults == null || Model.HoleResults.Count == 0)
-                {
-                    <div class="p-3 text-muted">
-                        Aucun trou saisi pour l’instant.
+                                        <label class="form-label">Score équipe A</label>
+                                        <div class="d-flex align-items-center gap-3">
+                                            <button type="button" class="btn btn-outline-secondary score-btn" onclick="decrement('TeamAScore')">−</button>
+                                            <input asp-for="TeamAScore" class="form-control text-center score-box" min="1" max="10" />
+                                            <button type="button" class="btn btn-outline-secondary score-btn" onclick="increment('TeamAScore')">+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-lg-6">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h4 class="mb-2">Équipe B</h4>
+                                        <div class="text-muted mb-3">@Model.TeamBName</div>
+
+                                        <label class="form-label">Score équipe B</label>
+                                        <div class="d-flex align-items-center gap-3">
+                                            <button type="button" class="btn btn-outline-secondary score-btn" onclick="decrement('TeamBScore')">−</button>
+                                            <input asp-for="TeamBScore" class="form-control text-center score-box" min="1" max="10" />
+                                            <button type="button" class="btn btn-outline-secondary score-btn" onclick="increment('TeamBScore')">+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn @(Model.EditHole.HasValue ? "btn-warning" : "btn-primary") action-btn">
+                            @(Model.EditHole.HasValue ? $"Enregistrer la correction du trou {Model.DisplayHole}" : $"Valider le trou {Model.DisplayHole}")
+                        </button>
                     </div>
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Trou</th>
 
-                                    @if (Model.IsFourballMatchPlay)
-                                    {
-                                        <th>A1</th>
-                                        <th>A2</th>
-                                        <th>B1</th>
-                                        <th>B2</th>
-                                    }
-
-                                    <th>Score A</th>
-                                    <th>Score B</th>
-                                    <th>Résultat trou</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var hole in Model.HoleResults)
-                                {
-                                    <tr>
-                                        <td><strong>@hole.HoleNumber</strong></td>
-
-                                        @if (Model.IsFourballMatchPlay)
-                                        {
-                                            <td>@(hole.TeamAPlayer1Score?.ToString() ?? "-")</td>
-                                            <td>@(hole.TeamAPlayer2Score?.ToString() ?? "-")</td>
-                                            <td>@(hole.TeamBPlayer1Score?.ToString() ?? "-")</td>
-                                            <td>@(hole.TeamBPlayer2Score?.ToString() ?? "-")</td>
-                                        }
-
-                                        <td>@hole.TeamAScore</td>
-                                        <td>@hole.TeamBScore</td>
-                                        <td>
-                                            @if (hole.IsHalved)
-                                            {
-                                                <span>Partagé</span>
-                                            }
-                                            else if (hole.WinnerTeamId == Model.Match.TeamAId)
-                                            {
-                                                <span>@Model.TeamAName</span>
-                                            }
-                                            else if (hole.WinnerTeamId == Model.Match.TeamBId)
-                                            {
-                                                <span>@Model.TeamBName</span>
-                                            }
-                                            else
-                                            {
-                                                <span>-</span>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </div>
+                    @if (Model.EditHole.HasValue)
+                    {
+                        <div class="d-grid mt-2">
+                            <a class="btn btn-outline-secondary action-btn"
+                                   href="/MatchPlayScore?matchId=@Model.matchId">
+                                Annuler la correction
+                            </a>
+                        </div>
+                    }
+                </form>
+            }
         </div>
-    }
+    </div>
+
+    <div class="card shadow-sm mp-card">
+        <div class="card-header fw-bold">
+            Historique des trous
+        </div>
+
+        <div class="card-body p-0">
+            @if (Model.HoleResults.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th>Trou</th>
+                                <th>Score A</th>
+                                <th>Score B</th>
+                                <th>Résultat trou</th>
+                                <th class="text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var h in Model.HoleResults)
+                            {
+                                string trouResultat;
+                                if (h.IsHalved)
+                                {
+                                    trouResultat = "Partagé";
+                                }
+                                else if (h.WinnerTeamId == Model.Match?.TeamAId)
+                                {
+                                    trouResultat = Model.TeamAName;
+                                }
+                                else if (h.WinnerTeamId == Model.Match?.TeamBId)
+                                {
+                                    trouResultat = Model.TeamBName;
+                                }
+                                else
+                                {
+                                    trouResultat = "-";
+                                }
+
+                                <tr>
+                                    <td>@h.HoleNumber</td>
+                                    <td>@h.TeamAScore</td>
+                                    <td>@h.TeamBScore</td>
+                                    <td>@trouResultat</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-warning"
+                                               href="/MatchPlayScore?matchId=@Model.matchId&editHole=@h.HoleNumber">
+                                            Corriger
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="p-3 text-muted">
+                    Aucun trou saisi pour le moment.
+                </div>
+            }
+        </div>
+    </div>
 </div>
+
+<script>
+    function increment(id) {
+        const input = document.getElementById(id);
+        if (!input) return;
+
+        let value = parseInt(input.value || "0", 10);
+        if (isNaN(value)) value = 0;
+        value = Math.min(10, value + 1);
+        input.value = value;
+    }
+
+    function decrement(id) {
+        const input = document.getElementById(id);
+        if (!input) return;
+
+        let value = parseInt(input.value || "0", 10);
+        if (isNaN(value)) value = 0;
+        value = Math.max(1, value - 1);
+        input.value = value;
+    }
+</script>

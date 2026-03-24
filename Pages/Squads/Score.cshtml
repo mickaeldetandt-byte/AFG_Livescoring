@@ -215,6 +215,11 @@
                             <span class="badge bg-warning text-dark badge-lg">EN COURS</span>
                         }
 
+                        @if (Model.Edit && !Model.IsSquadLocked)
+                        {
+                            <span class="badge bg-danger badge-lg">MODE CORRECTION</span>
+                        }
+
                         @if (Model.IsSquadLocked)
                         {
                             <span class="badge bg-dark badge-lg">CARTE VALIDÉE</span>
@@ -226,7 +231,7 @@
                     @if (Model.CurrentHole > 1)
                     {
                         <a class="btn btn-outline-primary action-btn"
-                               href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole - 1)">
+                               href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole - 1)&edit=@Model.Edit&token=@Model.Token">
                             ← Trou précédent
                         </a>
                     }
@@ -234,7 +239,7 @@
                     @if (Model.CurrentHole < 18)
                     {
                         <a class="btn btn-outline-primary action-btn"
-                               href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole + 1)">
+                               href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole + 1)&edit=@Model.Edit&token=@Model.Token">
                             Trou suivant →
                         </a>
                     }
@@ -252,6 +257,7 @@
                 <input type="hidden" asp-for="SquadId" />
                 <input type="hidden" asp-for="CurrentHole" />
                 <input type="hidden" asp-for="Edit" />
+                <input type="hidden" asp-for="Token" />
 
                 @foreach (var p in Model.Players)
                 {
@@ -270,7 +276,7 @@
                             <button type="button"
                                     class="btn btn-outline-secondary score-btn"
                                     onclick="if(preventDoubleTap()) decrement(@p.RoundId)"
-                                @(Model.IsHoleValidated || Model.IsSquadLocked ? "disabled" : "")>
+                                @(Model.IsSquadLocked || (Model.IsHoleValidated && !Model.Edit) ? "disabled" : "")>
                                 −
                             </button>
 
@@ -281,7 +287,7 @@
                             <button type="button"
                                     class="btn btn-outline-secondary score-btn"
                                     onclick="if(preventDoubleTap()) increment(@p.RoundId)"
-                                @(Model.IsHoleValidated || Model.IsSquadLocked ? "disabled" : "")>
+                                @(Model.IsSquadLocked || (Model.IsHoleValidated && !Model.Edit) ? "disabled" : "")>
                                 +
                             </button>
                         </div>
@@ -296,7 +302,7 @@
                                 Saisie désactivée. La carte a été validée officiellement.
                             </div>
                         }
-                        else if (Model.IsHoleValidated)
+                        else if (Model.IsHoleValidated && !Model.Edit)
                         {
                             <div class="alert alert-warning mb-3">
                                 Ce trou est déjà validé.
@@ -325,7 +331,7 @@
                                 else
                                 {
                                     <a class="btn btn-primary action-btn"
-                                           href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole + 1)">
+                                           href="/Squads/Score?competitionId=@Model.CompetitionId&squadId=@Model.SquadId&hole=@(Model.CurrentHole + 1)&token=@Model.Token">
                                         Trou suivant
                                     </a>
                                 }
@@ -335,8 +341,8 @@
                         {
                             <div class="d-grid">
                                 <button type="submit"
-                                        class="btn btn-success action-btn w-100">
-                                    Valider le trou
+                                        class="btn @(Model.Edit ? "btn-warning" : "btn-success") action-btn w-100">
+                                    @(Model.Edit ? "Enregistrer la correction" : "Valider le trou")
                                 </button>
                             </div>
                         }
@@ -352,6 +358,7 @@
                       asp-route-competitionId="@Model.CompetitionId"
                       asp-route-squadId="@Model.SquadId"
                       asp-route-hole="@Model.CurrentHole"
+                      asp-route-token="@Model.Token"
                       class="mt-3">
 
                     <button type="submit"

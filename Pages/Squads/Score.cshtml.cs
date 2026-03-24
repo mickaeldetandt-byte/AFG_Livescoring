@@ -250,6 +250,40 @@ namespace AFG_Livescoring.Pages.Squads
             return Page();
         }
 
+        public IActionResult OnPostCorrect()
+        {
+            Competition = _db.Competitions
+                .AsNoTracking()
+                .FirstOrDefault(c => c.Id == CompetitionId);
+
+            if (Competition == null)
+                return RedirectToPage("/Competitions");
+
+            var scoringCheck = CheckCompetitionAllowsScoring();
+            if (scoringCheck != null)
+                return scoringCheck;
+
+            var access = GetAccessResult(true);
+            if (access != null)
+                return access;
+
+            IsSquadLocked = ComputeIsSquadLocked();
+            if (IsSquadLocked)
+            {
+                TempData["Error"] = "Carte verrouillée.";
+                return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Edit = false, Token });
+            }
+
+            return RedirectToPage(new
+            {
+                CompetitionId,
+                SquadId,
+                Hole = CurrentHole,
+                Edit = true,
+                Token
+            });
+        }
+
         public IActionResult OnPost([FromForm] Dictionary<int, int> Scores)
         {
             Competition = _db.Competitions
@@ -271,13 +305,13 @@ namespace AFG_Livescoring.Pages.Squads
             if (IsSquadLocked)
             {
                 TempData["Error"] = "Carte verrouillée.";
-                return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Token });
+                return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Edit = false, Token });
             }
 
             if (CurrentHole < 1 || CurrentHole > 18)
             {
                 TempData["Error"] = "Trou invalide.";
-                return RedirectToPage(new { CompetitionId, SquadId, Hole = 1, Token });
+                return RedirectToPage(new { CompetitionId, SquadId, Hole = 1, Edit = false, Token });
             }
 
             var roundIds = _db.Rounds
@@ -291,41 +325,120 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
             }
 
-            var alreadyExists = _db.Scores.Any(s =>
-                roundIds.Contains(s.RoundId) &&
-                s.HoleNumber == CurrentHole);
-
-            if (alreadyExists)
-            {
-                TempData["Error"] = "Les scores de ce trou sont déjà enregistrés.";
-                return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Token });
-            }
-
             foreach (var kvp in Scores)
             {
                 if (!roundIds.Contains(kvp.Key))
                     continue;
 
-                if (kvp.Value <= 0)
-                    continue;
+                var existing = _db.Scores.FirstOrDefault(s =>
+                    s.RoundId == kvp.Key &&
+                    s.HoleNumber == CurrentHole);
 
-                _db.Scores.Add(new Score
+                if (kvp.Value <= 0)
                 {
-                    RoundId = kvp.Key,
-                    HoleNumber = CurrentHole,
-                    Strokes = kvp.Value
-                });
+                    if (existing != null)
+                        _db.Scores.Remove(existing);
+
+                    continue;
+                }
+
+                if (existing == null)
+                {
+                    _db.Scores.Add(new Score
+                    {
+                        RoundId = kvp.Key,
+                        HoleNumber = CurrentHole,
+                        Strokes = kvp.Value
+                    });
+                }
+                else
+                {
+                    existing.Strokes = kvp.Value;
+                }
             }
 
             _db.SaveChanges();
+
+            TempData["Success"] = Edit
+                ? "Correction enregistrée."
+                : "Trou validé.";
 
             return RedirectToPage(new
             {
                 CompetitionId,
                 SquadId,
-                Hole = CurrentHole < 18 ? CurrentHole + 1 : 18,
+                Hole = Edit ? CurrentHole : (CurrentHole < 18 ? CurrentHole + 1 : 18),
+                Edit = false,
                 Token
             });
+        }
+
+        public IActionResult OnPostLockCard()
+        {
+            Competition = _db.Competitions
+                .AsNoTracking()
+                .FirstOrDefault(c => c.Id == CompetitionId);
+
+            if (Competition == null)
+                return RedirectToPage("/Competitions");
+
+            var scoringCheck = CheckCompetitionAllowsScoring();
+            if (scoringCheck != null)
+                return scoringCheck;
+
+            var access = GetAccessResult(true);
+            if (access != null)
+                return access;
+
+            var rounds = _db.Rounds
+                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
+                .ToList();
+
+            if (rounds.Count == 0)
+            {
+                TempData["Error"] = "Aucun round trouvé pour ce squad.";
+                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
+            }
+
+            foreach (var round in rounds)
+                round.IsLocked = true;
+
+            _db.SaveChanges();
+
+            TempData["Success"] = "Carte validée.";
+            return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Edit = false, Token });
+        }
+
+        public IActionResult OnPostUnlock()
+        {
+            Competition = _db.Competitions
+                .AsNoTracking()
+                .FirstOrDefault(c => c.Id == CompetitionId);
+
+            if (Competition == null)
+                return RedirectToPage("/Competitions");
+
+            var access = GetAccessResult(true);
+            if (access != null)
+                return access;
+
+            var rounds = _db.Rounds
+                .Where(r => r.CompetitionId == CompetitionId && r.SquadId == SquadId)
+                .ToList();
+
+            if (rounds.Count == 0)
+            {
+                TempData["Error"] = "Aucun round trouvé pour ce squad.";
+                return RedirectToPage("/Leaderboard", new { competitionId = CompetitionId });
+            }
+
+            foreach (var round in rounds)
+                round.IsLocked = false;
+
+            _db.SaveChanges();
+
+            TempData["Success"] = "Carte déverrouillée.";
+            return RedirectToPage(new { CompetitionId, SquadId, Hole = CurrentHole, Edit = false, Token });
         }
     }
 }

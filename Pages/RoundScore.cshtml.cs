@@ -54,6 +54,7 @@ namespace AFG_Livescoring.Pages
             if (competition.ScoringMode == ScoringMode.SquadOnly)
             {
                 TempData["Error"] = "En compétition, la saisie individuelle est désactivée. Utilisez le scoring par squad.";
+
                 if (Round.SquadId.HasValue)
                 {
                     return RedirectToPage("/Squads/Score", new
@@ -103,6 +104,7 @@ namespace AFG_Livescoring.Pages
             if (competition.ScoringMode == ScoringMode.SquadOnly)
             {
                 TempData["Error"] = "En compétition, la saisie individuelle est désactivée. Utilisez le scoring par squad.";
+
                 if (round.SquadId.HasValue)
                 {
                     return RedirectToPage("/Squads/Score", new
@@ -118,6 +120,10 @@ namespace AFG_Livescoring.Pages
 
             NormalizeHoleScores();
 
+            var existingScores = _db.Scores
+                .Where(s => s.RoundId == RoundId)
+                .ToDictionary(s => s.HoleNumber);
+
             for (int i = 0; i < 18; i++)
             {
                 int holeNumber = i + 1;
@@ -126,8 +132,7 @@ namespace AFG_Livescoring.Pages
                 if (strokes < 0) strokes = 0;
                 if (strokes > 10) strokes = 10;
 
-                var existing = _db.Scores
-                    .FirstOrDefault(s => s.RoundId == RoundId && s.HoleNumber == holeNumber);
+                existingScores.TryGetValue(holeNumber, out var existing);
 
                 if (strokes == 0)
                 {
@@ -206,9 +211,7 @@ namespace AFG_Livescoring.Pages
                 return false;
 
             if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
-            {
                 return !isWriteAccess || competition.Status != CompetitionStatus.Finished;
-            }
 
             var currentUser = _db.AppUsers.FirstOrDefault(u => u.Email == email);
             if (currentUser == null)
@@ -238,22 +241,19 @@ namespace AFG_Livescoring.Pages
             var existingScores = _db.Scores
                 .Where(s => s.RoundId == RoundId)
                 .OrderBy(s => s.HoleNumber)
-                .ToList();
+                .ToDictionary(s => s.HoleNumber, s => s.Strokes);
 
             HoleScores = new List<int>();
+
             for (int i = 1; i <= 18; i++)
             {
-                var score = existingScores.FirstOrDefault(s => s.HoleNumber == i);
-                HoleScores.Add(score?.Strokes ?? 0);
+                HoleScores.Add(existingScores.TryGetValue(i, out var strokes) ? strokes : 0);
             }
         }
 
         private void LoadHolePars(int? courseId)
         {
-            HolePars = new List<int>();
-            for (int i = 0; i < 18; i++)
-                HolePars.Add(0);
-
+            HolePars = Enumerable.Repeat(0, 18).ToList();
             TotalCoursePar = 0;
 
             if (!courseId.HasValue)

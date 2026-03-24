@@ -638,6 +638,68 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
+        public IActionResult OnPostAddAndAssign(int competitionId, int playerId, int squadId)
+        {
+            this.competitionId = competitionId;
+
+            var comp = _db.Competitions
+                .AsNoTracking()
+                .FirstOrDefault(c => c.Id == competitionId);
+
+            if (comp == null)
+                return RedirectToPage("/Competitions");
+
+            if (!IsTrainingMode(comp))
+            {
+                TempData["Message"] = "Action autorisée uniquement en entraînement.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            var player = _db.Players.AsNoTracking().FirstOrDefault(p => p.Id == playerId);
+            if (player == null)
+            {
+                TempData["Message"] = "Joueur introuvable.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            var squad = _db.Squads.AsNoTracking().FirstOrDefault(s => s.Id == squadId && s.CompetitionId == competitionId);
+            if (squad == null)
+            {
+                TempData["Message"] = "Squad introuvable.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            bool alreadyExists = _db.Rounds.Any(r => r.CompetitionId == competitionId && r.PlayerId == playerId);
+            if (alreadyExists)
+            {
+                TempData["Message"] = "Ce joueur est déjà inscrit dans cette session.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            var (minAllowed, maxAllowed) = SquadRules.GetLimits(comp);
+            int currentCount = _db.Rounds.Count(r => r.CompetitionId == competitionId && r.SquadId == squadId);
+
+            if (currentCount >= maxAllowed)
+            {
+                TempData["Message"] = $"Squad plein : maximum {maxAllowed} joueur(s).";
+                return RedirectToPage(new { competitionId });
+            }
+
+            var round = new Round
+            {
+                CompetitionId = competitionId,
+                PlayerId = playerId,
+                SquadId = squadId,
+                IsLocked = false
+            };
+
+            _db.Rounds.Add(round);
+            _db.SaveChanges();
+
+            TempData["Message"] = $"Joueur ajouté et affecté directement à {squad.Name}.";
+            return RedirectToPage(new { competitionId });
+        }
+
         public IActionResult OnPostAssign(int competitionId, int roundId, int squadId)
         {
             this.competitionId = competitionId;
