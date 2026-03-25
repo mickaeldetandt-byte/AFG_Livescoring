@@ -25,6 +25,10 @@ namespace AFG_Livescoring.Pages
 
         public bool IsCompetition => !IsTraining;
 
+        public bool UserCanManageCompetition { get; set; }
+        public bool ShowResultsButton => Competition?.Status == CompetitionStatus.Finished;
+        public bool ShowLiveButtons => Competition?.Status == CompetitionStatus.InProgress;
+
         public List<LeaderboardRow> Rows { get; set; } = new();
 
         public int CourseParTotal { get; set; }
@@ -50,7 +54,8 @@ namespace AFG_Livescoring.Pages
              || Competition.CompetitionType == CompetitionType.MatchPlayFoursome
              || Competition.CompetitionType == CompetitionType.MatchPlayScramble);
 
-        public bool IsMatchPlayIndividual => IsMatchPlayCompetition;
+        public bool IsMatchPlayIndividual =>
+            Competition?.CompetitionType == CompetitionType.MatchPlayIndividual;
 
         public class SquadProgress
         {
@@ -108,6 +113,8 @@ namespace AFG_Livescoring.Pages
             var accessResult = GetCompetitionAccessResult(Competition);
             if (accessResult != null)
                 return accessResult;
+
+            UserCanManageCompetition = CanManageCompetition(Competition);
 
             if (IsMatchPlayCompetition)
             {
@@ -288,6 +295,39 @@ namespace AFG_Livescoring.Pages
             return false;
         }
 
+        private bool CanManageCompetition(Competition competition)
+        {
+            if (User.Identity?.IsAuthenticated != true)
+                return false;
+
+            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            var email = User.Identity?.Name;
+
+            if (string.IsNullOrWhiteSpace(role) || string.IsNullOrWhiteSpace(email))
+                return false;
+
+            if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var currentUser = _db.AppUsers
+                .AsNoTracking()
+                .FirstOrDefault(u => u.Email == email);
+
+            if (currentUser == null)
+                return false;
+
+            if (string.Equals(role, "Club", StringComparison.OrdinalIgnoreCase))
+            {
+                if (competition.ClubId.HasValue && currentUser.ClubId == competition.ClubId)
+                    return true;
+
+                if (competition.CreatedByUserId.HasValue && currentUser.Id == competition.CreatedByUserId.Value)
+                    return true;
+            }
+
+            return false;
+        }
+
         private bool IsPlayerParticipant(int competitionId, int playerId)
         {
             bool inIndividualRounds = _db.Rounds
@@ -462,6 +502,27 @@ namespace AFG_Livescoring.Pages
             if (difference == 0) return "par-even";
             if (difference > 0) return "par-over";
             return "par-under";
+        }
+
+        public string GetSquadScoreUrl(int squadId)
+        {
+            if (Competition == null)
+                return "#";
+
+            if (!SquadProgressById.TryGetValue(squadId, out var progress))
+                return "#";
+
+            int hole = progress.CurrentHole ?? 18;
+
+            if (IsDoublesCompetition)
+                return $"/Teams/Score?competitionId={CompetitionId}&squadId={squadId}&hole={hole}";
+
+            return $"/Squads/Score?competitionId={CompetitionId}&squadId={squadId}&hole={hole}";
+        }
+
+        public string GetMatchPlayScoreUrl(int matchId)
+        {
+            return $"/MatchPlayScore?matchId={matchId}";
         }
 
         private IActionResult BuildTeamsLeaderboard()

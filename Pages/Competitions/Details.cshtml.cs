@@ -38,6 +38,12 @@ namespace AFG_Livescoring.Pages.Competitions
         public bool CanStart { get; set; }
         public bool CanFinish { get; set; }
 
+        public bool ShowLeaderboardButton => Competition != null && Competition.Status != CompetitionStatus.Draft;
+        public bool ShowResultsButton => Competition?.Status == CompetitionStatus.Finished;
+        public bool ShowSquadsButton => CanManage;
+        public bool ShowParticipantsButton => CanManage;
+        public bool ShowLiveButton => Competition?.Status == CompetitionStatus.InProgress;
+
         public IActionResult OnGet()
         {
             if (!LoadPageData())
@@ -121,7 +127,6 @@ namespace AFG_Livescoring.Pages.Competitions
             if (!CanManageCompetition(Competition))
                 throw new UnauthorizedAccessException();
 
-            // Participants individuels
             var rounds = _db.Rounds
                 .AsNoTracking()
                 .Where(r => r.CompetitionId == Id)
@@ -129,7 +134,6 @@ namespace AFG_Livescoring.Pages.Competitions
 
             var roundIds = rounds.Select(r => r.Id).ToList();
 
-            // Scores individuels
             var scores = roundIds.Any()
                 ? _db.Scores
                     .AsNoTracking()
@@ -137,15 +141,13 @@ namespace AFG_Livescoring.Pages.Competitions
                     .ToList()
                 : new List<Score>();
 
-            // Squads
             var squads = _db.Squads
                 .AsNoTracking()
                 .Where(s => s.CompetitionId == Id)
                 .ToList();
 
-            // Team rounds / match play rounds pour couvrir tous les formats
-            var teamRoundsCount = _db.TeamRounds.AsNoTracking().Count(tr => tr.CompetitionId == Id);
-            var matchPlayRoundsCount = _db.MatchPlayRounds.AsNoTracking().Count(m => m.CompetitionId == Id);
+            _ = _db.TeamRounds.AsNoTracking().Count(tr => tr.CompetitionId == Id);
+            _ = _db.MatchPlayRounds.AsNoTracking().Count(m => m.CompetitionId == Id);
 
             PlayerCount = rounds.Count;
             SquadCount = squads.Count;
@@ -185,8 +187,6 @@ namespace AFG_Livescoring.Pages.Competitions
             CanStart = Competition.Status == CompetitionStatus.Draft;
             CanFinish = Competition.Status == CompetitionStatus.InProgress;
 
-            // Cas pratique : si la compétition est en Draft mais que du scoring existe déjà,
-            // on laisse quand même la possibilité de la terminer plus tard après régularisation.
             if (Competition.Status == CompetitionStatus.Draft && HasStarted)
             {
                 CanStart = false;

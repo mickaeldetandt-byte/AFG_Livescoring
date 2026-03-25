@@ -102,6 +102,49 @@
         border: 1px solid #f7c79b;
     }
 
+    .quick-actions-sticky {
+        position: sticky;
+        top: 10px;
+        z-index: 20;
+        background: rgba(255,255,255,0.96);
+        backdrop-filter: blur(8px);
+        border: 1px solid #dee2e6;
+        border-radius: 16px;
+        padding: 12px;
+        margin-top: 16px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+
+    .quick-actions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+    }
+
+    .quick-action-btn {
+        min-height: 54px;
+        font-weight: 700;
+        border-radius: 12px;
+        white-space: normal;
+    }
+
+    .direct-score-card {
+        border-radius: 16px;
+        border: 1px solid #dee2e6;
+        background: #fff;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+
+    .direct-score-title {
+        font-weight: 700;
+        font-size: 1rem;
+    }
+
+    .direct-score-meta {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
     @@media (max-width: 768px) {
         .col-hide-md {
             display: none;
@@ -117,6 +160,11 @@
 
         .btn {
             white-space: nowrap;
+        }
+
+        .quick-action-btn {
+            min-height: 58px;
+            font-size: 0.98rem;
         }
     }
 </style>
@@ -197,8 +245,117 @@
         Astuce : actualisation automatique toutes les 30 secondes.
     </div>
 
+    <div class="quick-actions-sticky">
+        <div class="quick-actions-grid">
+            <a class="btn btn-outline-secondary quick-action-btn"
+                   href="/Leaderboard?competitionId=@Model.CompetitionId">
+                Rafraîchir le live
+            </a>
+
+            @if (Model.IsDoublesCompetition)
+            {
+                <a class="btn btn-outline-primary quick-action-btn"
+                       href="/Teams/Manage?competitionId=@Model.CompetitionId">
+                    Gérer les équipes
+                </a>
+            }
+            else
+            {
+                <a class="btn btn-outline-primary quick-action-btn"
+                       href="/Squads/Manage?competitionId=@Model.CompetitionId">
+                    Gérer les squads
+                </a>
+            }
+
+            <a class="btn btn-outline-dark quick-action-btn"
+                   href="/Display?competitionId=@Model.CompetitionId"
+                   target="_blank">
+                Club House
+            </a>
+
+            @if (Model.Competition?.Status == CompetitionStatus.Finished)
+            {
+                <a class="btn btn-outline-success quick-action-btn"
+                       href="/Competitions/Results?competitionId=@Model.CompetitionId">
+                    Voir les résultats
+                </a>
+            }
+        </div>
+    </div>
+
     @if (Model.IsMatchPlayIndividual)
     {
+        @if (Model.MatchPlayRows.Any())
+        {
+            <div class="card mt-3 shadow-sm leader-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="mb-0">Accès direct scoring Match Play</h5>
+                        <span class="text-muted small">Accès mobile rapide</span>
+                    </div>
+
+                    <div class="row mt-3">
+                        @foreach (var match in Model.MatchPlayRows)
+                        {
+                            var squadName = Model.SquadProgressById.ContainsKey(match.SquadId)
+                                ? Model.SquadProgressById[match.SquadId].SquadName
+                                : $"Squad {match.SquadId}";
+
+                            <div class="col-12 col-md-6 col-lg-4 mb-3">
+                                <div class="card direct-score-card h-100">
+                                    <div class="card-body">
+                                        <div class="direct-score-title">@squadName</div>
+                                        <div class="direct-score-meta mb-2">
+                                            <strong>@match.TeamAName</strong><br />
+                                            vs<br />
+                                            <strong>@match.TeamBName</strong>
+                                        </div>
+
+                                        <div class="mb-2">
+                                            @if (match.IsFinished)
+                                            {
+                                                <span class="badge bg-success">18 joués</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-primary">Trou @match.CurrentHole</span>
+                                            }
+                                        </div>
+
+                                        <div class="small text-muted mb-3">
+                                            @match.StatusText
+                                            @if (!string.IsNullOrWhiteSpace(match.ResultText))
+                                            {
+                                                <span> • @match.ResultText</span>
+                                            }
+                                        </div>
+
+                                        @if (Model.Competition?.Status == CompetitionStatus.InProgress)
+                                        {
+                                            <div class="d-grid">
+                                                <a class="btn btn-success quick-action-btn"
+                                                       href="/MatchPlayScore?matchId=@match.MatchId">
+                                                    Scorer maintenant
+                                                </a>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-grid">
+                                                <button class="btn btn-secondary quick-action-btn" disabled>
+                                                    Scoring indisponible
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+
         @if (Model.SquadProgressById != null && Model.SquadProgressById.Any())
         {
             <div class="card mt-3 shadow-sm leader-card">
@@ -255,8 +412,8 @@
                                 @foreach (var match in Model.MatchPlayRows)
                                 {
                                     var squadName = Model.SquadProgressById.ContainsKey(match.SquadId)
-                                    ? Model.SquadProgressById[match.SquadId].SquadName
-                                    : $"Squad {match.SquadId}";
+                                        ? Model.SquadProgressById[match.SquadId].SquadName
+                                        : $"Squad {match.SquadId}";
 
                                     <tr>
                                         <td>@squadName</td>
@@ -300,6 +457,69 @@
     }
     else
     {
+        @if (Model.SquadProgressById != null && Model.SquadProgressById.Any())
+        {
+            <div class="card mt-3 shadow-sm leader-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="mb-0">Accès direct au scoring</h5>
+                        <span class="text-muted small">Pour mobile / terrain</span>
+                    </div>
+
+                    <div class="row mt-3">
+                        @foreach (var sp in Model.SquadProgressById.Values.OrderBy(x => x.SquadName))
+                        {
+                            var scoreUrl = Model.IsDoublesCompetition
+                                ? $"/Teams/Score?competitionId={Model.CompetitionId}&squadId={sp.SquadId}"
+                                : $"/Squads/Score?competitionId={Model.CompetitionId}&squadId={sp.SquadId}";
+
+                            <div class="col-12 col-md-6 col-lg-4 mb-3">
+                                <div class="card direct-score-card h-100">
+                                    <div class="card-body">
+                                        <div class="direct-score-title">@sp.SquadName</div>
+                                        <div class="direct-score-meta">StartHole @sp.StartHole</div>
+
+                                        <div class="mt-3 mb-2">
+                                            @if (sp.Finished)
+                                            {
+                                                <span class="badge bg-success">Terminé</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-primary">Trou @sp.CurrentHole</span>
+                                            }
+                                        </div>
+
+                                        <div class="small text-muted mb-3">
+                                            Progression : @sp.MinHolesPlayed / 18
+                                        </div>
+
+                                        @if (Model.Competition?.Status == CompetitionStatus.InProgress)
+                                        {
+                                            <div class="d-grid">
+                                                <a class="btn btn-success quick-action-btn"
+                                                       href="@scoreUrl">
+                                                    @(Model.IsDoublesCompetition ? "Score équipe" : "Score Squad")
+                                                </a>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-grid">
+                                                <button class="btn btn-secondary quick-action-btn" disabled>
+                                                    Scoring indisponible
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+
         @if (top3.Any())
         {
             <div class="row mt-3">
@@ -369,7 +589,7 @@
                                         else
                                         {
                                             <span class="badge bg-primary">Trou @sp.CurrentHole</span>
-                                            <div class="small text-muted">@sp.MinHolesPlayed/18</div>
+                                            <div class="small text-muted">@sp.MinHolesPlayed / 18</div>
                                         }
                                     </div>
                                 </div>
@@ -395,7 +615,6 @@
                         <th class="col-hide-md" style="width:120px;">Moy.</th>
                         <th style="width:140px;">Squad</th>
                         <th style="width:120px;">Trou squad</th>
-                        <th class="col-hide-md" style="width:140px;">Score Joueur</th>
                         <th style="width:140px;">@(Model.IsDoublesCompetition ? "Score équipe" : "Score Squad")</th>
                     </tr>
                 </thead>
@@ -448,9 +667,7 @@
                                 }
                                 else
                                 {
-                                    <a href="/RoundCard?roundId=@row.RoundId" class="text-decoration-none fw-semibold">
-                                        @row.PlayerName
-                                    </a>
+                                    <span class="fw-semibold">@row.PlayerName</span>
                                 }
                             </td>
 
@@ -505,37 +722,6 @@
                                 else
                                 {
                                     <span class="text-muted">-</span>
-                                }
-                            </td>
-
-                            <td class="col-hide-md">
-                                @if (Model.IsDoublesCompetition)
-                                {
-                                    <button class="btn btn-sm btn-secondary" disabled
-                                            title="En doubles, la saisie se fait par équipe.">
-                                        Score Joueur
-                                    </button>
-                                }
-                                else if (Model.IsTraining && Model.Competition?.Status == CompetitionStatus.InProgress)
-                                {
-                                    <a class="btn btn-sm btn-primary"
-                                           href="/RoundScore?roundId=@row.RoundId">
-                                        Score Joueur
-                                    </a>
-                                }
-                                else if (Model.IsTraining)
-                                {
-                                    <button class="btn btn-sm btn-secondary" disabled
-                                            title="Le scoring est disponible uniquement quand la compétition est en cours.">
-                                        Score Joueur
-                                    </button>
-                                }
-                                else
-                                {
-                                    <button class="btn btn-sm btn-secondary" disabled
-                                            title="En compétition : saisie via Score Squad uniquement">
-                                        Score Joueur
-                                    </button>
                                 }
                             </td>
 
