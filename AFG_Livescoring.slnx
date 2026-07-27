@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="AFG_Livescoring.csproj" />
+  <Project Path="tests\AFG_Livescoring.Tests\AFG_Livescoring.Tests.csproj" />
+  <Project Path="tools\AFG.UserAdmin\AFG.UserAdmin.csproj" />
 </Solution>

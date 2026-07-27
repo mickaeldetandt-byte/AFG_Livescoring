@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
+using AFG_Livescoring.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +14,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 
 builder.Services.AddRazorPages();
+builder.Services.AddScoped<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
+builder.Services.AddScoped<AppUserPasswordService>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
@@ -35,30 +39,6 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine("AFG STARTUP TEST V1.0.3");
 
         db.Database.Migrate();
-
-        if (!db.AppUsers.Any(u => u.Email == "admin@afg.local"))
-        {
-            db.AppUsers.Add(new AppUser
-            {
-                Email = "admin@afg.local",
-                PasswordHash = "admin123",
-                Role = "Admin",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        if (!db.AppUsers.Any(u => u.Email == "club@afg.local"))
-        {
-            db.AppUsers.Add(new AppUser
-            {
-                Email = "club@afg.local",
-                PasswordHash = "club123",
-                Role = "Club",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
 
         var roundsWithoutToken = db.Rounds
             .Where(r => string.IsNullOrEmpty(r.PublicToken))

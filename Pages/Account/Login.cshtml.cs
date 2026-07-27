@@ -1,20 +1,26 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
+using AFG_Livescoring.Services;
 
 namespace AFG_Livescoring.Pages.Account
 {
     public class LoginModel : PageModel
     {
-        private readonly AppDbContext _db;
+        private const string GenericLoginError = "Email ou mot de passe incorrect.";
 
-        public LoginModel(AppDbContext db)
+        private readonly AppDbContext _db;
+        private readonly AppUserPasswordService _passwordService;
+
+        public LoginModel(AppDbContext db, AppUserPasswordService passwordService)
         {
             _db = db;
+            _passwordService = passwordService;
         }
 
         [BindProperty]
@@ -44,17 +50,29 @@ namespace AFG_Livescoring.Pages.Account
 
             if (user == null)
             {
-                ErrorMessage = "Utilisateur introuvable.";
+                ErrorMessage = GenericLoginError;
                 return Page();
             }
 
-            // Version simple provisoire :
-            // on compare directement le mot de passe stocké dans PasswordHash
-            // On sécurisera mieux ensuite
-            if (user.PasswordHash != Password)
+            if (user.PasswordResetRequired)
             {
-                ErrorMessage = "Mot de passe incorrect.";
+                ErrorMessage = GenericLoginError;
                 return Page();
+            }
+
+            var verificationResult = _passwordService.VerifyPassword(user, Password);
+
+            if (verificationResult == PasswordVerificationResult.Failed)
+            {
+                ErrorMessage = GenericLoginError;
+                return Page();
+            }
+
+            if (verificationResult == PasswordVerificationResult.SuccessRehashNeeded)
+            {
+                user.PasswordHash = _passwordService.HashPassword(user, Password);
+                user.PasswordChangedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
             }
 
             var claims = new List<Claim>

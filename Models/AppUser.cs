@@ -6,6 +6,8 @@
 
         public string Email { get; set; } = "";
         public string PasswordHash { get; set; } = "";
+        public bool PasswordResetRequired { get; set; } = true;
+        public DateTime? PasswordChangedAt { get; set; }
 
         // Admin / Organizer / Club / Player
         public string Role { get; set; } = "Player";

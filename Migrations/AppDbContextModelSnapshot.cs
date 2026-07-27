@@ -40,6 +40,12 @@ namespace AFG_Livescoring.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("PasswordChangedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("PasswordResetRequired")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("PlayerId")
                         .HasColumnType("INTEGER");
 
