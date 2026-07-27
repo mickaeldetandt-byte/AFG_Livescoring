@@ -364,3 +364,11 @@ FodyWeavers.xsd
 
 *.db-shm
 *.db-wal
+
+# Local application configuration and environment secrets
+appsettings.Local.json
+appsettings.*.Local.json
+.env
+.env.*
+!.env.example
+secrets.json
