@@ -16,6 +16,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddRazorPages();
 builder.Services.AddScoped<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
 builder.Services.AddScoped<AppUserPasswordService>();
+builder.Services.AddScoped<ICompetitionAuthorizationService, CompetitionAuthorizationService>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 

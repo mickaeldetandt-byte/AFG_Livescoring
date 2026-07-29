@@ -3,17 +3,22 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
+using AFG_Livescoring.Services;
 
 namespace AFG_Livescoring.Pages
 {
-    [Authorize]
+    [Authorize(Roles = "Admin,Club")]
     public class CompetitionParticipantsModel : PageModel
     {
         private readonly AppDbContext _db;
+        private readonly ICompetitionAuthorizationService _authorizationService;
 
-        public CompetitionParticipantsModel(AppDbContext db)
+        public CompetitionParticipantsModel(
+            AppDbContext db,
+            ICompetitionAuthorizationService authorizationService)
         {
             _db = db;
+            _authorizationService = authorizationService;
         }
 
         [BindProperty(SupportsGet = true)]
@@ -33,16 +38,22 @@ namespace AFG_Livescoring.Pages
         [BindProperty]
         public int SelectedPlayerId { get; set; }
 
-        public IActionResult OnGet()
+        public async Task<IActionResult> OnGetAsync()
         {
+            if (!await CanManageCompetitionAsync())
+                return Forbid();
+
             if (!LoadPageData())
                 return RedirectToPage("/Competitions");
 
             return Page();
         }
 
-        public IActionResult OnPostAdd()
+        public async Task<IActionResult> OnPostAddAsync()
         {
+            if (!await CanManageCompetitionAsync())
+                return Forbid();
+
             if (!LoadPageData())
                 return RedirectToPage("/Competitions");
 
@@ -73,8 +84,11 @@ namespace AFG_Livescoring.Pages
             return RedirectToPage(new { competitionId = CompetitionId });
         }
 
-        public IActionResult OnPostRemove(int roundId)
+        public async Task<IActionResult> OnPostRemoveAsync(int roundId)
         {
+            if (!await CanManageCompetitionAsync())
+                return Forbid();
+
             if (!LoadPageData())
                 return RedirectToPage("/Competitions");
 
@@ -92,6 +106,14 @@ namespace AFG_Livescoring.Pages
             }
 
             return RedirectToPage(new { competitionId = CompetitionId });
+        }
+
+        private Task<bool> CanManageCompetitionAsync()
+        {
+            return _authorizationService.CanManageCompetitionAsync(
+                User,
+                CompetitionId,
+                HttpContext.RequestAborted);
         }
 
         private bool LoadPageData()
