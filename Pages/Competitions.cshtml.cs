@@ -38,6 +38,7 @@ namespace AFG_Livescoring.Pages
             public bool HasStarted { get; set; }
             public bool IsFinished { get; set; }
             public int CompletedRounds { get; set; }
+            public int TotalRounds { get; set; }
         }
 
         public IActionResult OnGet()
@@ -98,57 +99,22 @@ namespace AFG_Livescoring.Pages
 
             CompetitionStates = new Dictionary<int, CompetitionStateInfo>();
 
-            var competitionIds = Competitions.Select(c => c.Id).ToList();
-
-            var rounds = _db.Rounds
-                .AsNoTracking()
-                .Where(r => competitionIds.Contains(r.CompetitionId))
-                .ToList();
-
-            var roundIds = rounds.Select(r => r.Id).ToList();
-
-            var scores = _db.Scores
-                .AsNoTracking()
-                .Where(s => roundIds.Contains(s.RoundId) && s.Strokes > 0)
-                .ToList();
-
-            var holesPlayedByRoundId = scores
-                .GroupBy(s => s.RoundId)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Select(x => x.HoleNumber).Distinct().Count()
-                );
+            var metricsByCompetition = CompetitionMetricsCalculator.Calculate(
+                _db,
+                Competitions);
 
             foreach (var comp in Competitions)
             {
-                var compRounds = rounds
-                    .Where(r => r.CompetitionId == comp.Id)
-                    .ToList();
-
-                int playerCount = compRounds.Count;
-                bool hasStarted = false;
-                int completedRounds = 0;
-
-                foreach (var round in compRounds)
-                {
-                    int holesPlayed = holesPlayedByRoundId.TryGetValue(round.Id, out var hp) ? hp : 0;
-
-                    if (holesPlayed > 0)
-                        hasStarted = true;
-
-                    if (holesPlayed >= 18)
-                        completedRounds++;
-                }
-
-                bool isFinished = playerCount > 0 && completedRounds == playerCount;
+                var metrics = metricsByCompetition[comp.Id];
 
                 CompetitionStates[comp.Id] = new CompetitionStateInfo
                 {
                     CompetitionId = comp.Id,
-                    PlayerCount = playerCount,
-                    HasStarted = hasStarted,
-                    IsFinished = isFinished,
-                    CompletedRounds = completedRounds
+                    PlayerCount = metrics.ParticipantsCount,
+                    HasStarted = metrics.HasStarted,
+                    IsFinished = metrics.IsFinished,
+                    CompletedRounds = metrics.CompletedRounds,
+                    TotalRounds = metrics.TotalRounds
                 };
             }
         }

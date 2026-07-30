@@ -233,11 +233,13 @@ public class CompetitionListsAuthorizationTests
                 clubA.Id,
                 course.Id,
                 CompetitionVisibility.Private);
+            competitionA.Status = CompetitionStatus.Finished;
             var competitionB = CreateCompetition(
                 "Competition B",
                 clubB.Id,
                 course.Id,
                 CompetitionVisibility.Public);
+            competitionB.Status = CompetitionStatus.InProgress;
             var privateCompetitionB = CreateCompetition(
                 "Private competition B",
                 clubB.Id,

@@ -31,7 +31,8 @@ namespace AFG_Livescoring.Pages.Competitions
         public int SquadCount { get; set; }
         public bool HasStarted { get; set; }
         public int CompletedRounds { get; set; }
-        public bool AutoFinishedByScores { get; set; }
+        public int TotalRounds { get; set; }
+        public bool IsSportingStructureComplete { get; set; }
 
         public bool IsTraining =>
             string.Equals(Competition?.Mode, "Training", StringComparison.OrdinalIgnoreCase);
@@ -157,60 +158,24 @@ namespace AFG_Livescoring.Pages.Competitions
             if (Competition == null)
                 return false;
 
-            var rounds = await _db.Rounds
+            var metricsByCompetition =
+                await CompetitionMetricsCalculator.CalculateAsync(
+                    _db,
+                    new[] { Competition },
+                    HttpContext.RequestAborted);
+            var metrics = metricsByCompetition[Competition.Id];
+
+            SquadCount = await _db.Squads
                 .AsNoTracking()
-                .Where(r => r.CompetitionId == Id)
-                .ToListAsync(HttpContext.RequestAborted);
-
-            var roundIds = rounds.Select(r => r.Id).ToList();
-
-            var scores = roundIds.Any()
-                ? await _db.Scores
-                    .AsNoTracking()
-                    .Where(s => roundIds.Contains(s.RoundId) && s.Strokes > 0)
-                    .ToListAsync(HttpContext.RequestAborted)
-                : new List<Score>();
-
-            var squads = await _db.Squads
-                .AsNoTracking()
-                .Where(s => s.CompetitionId == Id)
-                .ToListAsync(HttpContext.RequestAborted);
-
-            PlayerCount = rounds.Count;
-            SquadCount = squads.Count;
-
-            HasStarted = scores.Any()
-                         || await _db.TeamScores.AsNoTracking()
-                             .Join(_db.TeamRounds.AsNoTracking().Where(tr => tr.CompetitionId == Id),
-                                   s => s.TeamRoundId,
-                                   tr => tr.Id,
-                                   (s, tr) => s)
-                             .AnyAsync(
-                                 ts => ts.Strokes > 0,
-                                 HttpContext.RequestAborted)
-                         || await _db.MatchPlayHoleResults.AsNoTracking()
-                             .Join(_db.MatchPlayRounds.AsNoTracking().Where(m => m.CompetitionId == Id),
-                                   h => h.MatchPlayRoundId,
-                                   m => m.Id,
-                                   (h, m) => h)
-                             .AnyAsync(HttpContext.RequestAborted);
-
-            var holesPlayedByRoundId = scores
-                .GroupBy(s => s.RoundId)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Select(x => x.HoleNumber).Distinct().Count()
-                );
-
-            CompletedRounds = 0;
-            foreach (var round in rounds)
-            {
-                int holesPlayed = holesPlayedByRoundId.TryGetValue(round.Id, out var hp) ? hp : 0;
-                if (holesPlayed >= 18)
-                    CompletedRounds++;
-            }
-
-            AutoFinishedByScores = PlayerCount > 0 && CompletedRounds == PlayerCount;
+                .CountAsync(
+                    squad => squad.CompetitionId == Id,
+                    HttpContext.RequestAborted);
+            PlayerCount = metrics.ParticipantsCount;
+            HasStarted = metrics.HasStarted;
+            CompletedRounds = metrics.CompletedRounds;
+            TotalRounds = metrics.TotalRounds;
+            IsSportingStructureComplete = TotalRounds > 0
+                                          && CompletedRounds == TotalRounds;
 
             CanManage = true;
             CanStart = Competition.Status == CompetitionStatus.Draft;

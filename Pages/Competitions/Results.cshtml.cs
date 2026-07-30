@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
+using AFG_Livescoring.Services;
 
 namespace AFG_Livescoring.Pages.Competitions
 {
@@ -29,6 +30,8 @@ namespace AFG_Livescoring.Pages.Competitions
             public int PlayerCount { get; set; }
             public bool HasStarted { get; set; }
             public bool IsFinished { get; set; }
+            public int CompletedRounds { get; set; }
+            public int TotalRounds { get; set; }
         }
 
         public async Task<IActionResult> OnGetAsync()
@@ -50,41 +53,18 @@ namespace AFG_Livescoring.Pages.Competitions
             var competitions = await competitionsQuery
                 .Include(c => c.Course)
                 .OrderByDescending(c => c.Date)
-                .ToListAsync();
+                .ToListAsync(HttpContext.RequestAborted);
 
+            var metricsByCompetition =
+                await CompetitionMetricsCalculator.CalculateAsync(
+                    _db,
+                    competitions,
+                    HttpContext.RequestAborted);
             var rows = new List<CompetitionRow>();
 
             foreach (var comp in competitions)
             {
-                var rounds = await _db.Rounds
-                    .AsNoTracking()
-                    .Where(r => r.CompetitionId == comp.Id)
-                    .ToListAsync();
-
-                var roundIds = rounds.Select(r => r.Id).ToList();
-
-                var scores = await _db.Scores
-                    .AsNoTracking()
-                    .Where(s => roundIds.Contains(s.RoundId) && s.Strokes > 0)
-                    .ToListAsync();
-
-                int players = rounds.Count;
-                bool hasStarted = scores.Any();
-                bool isFinished = false;
-
-                if (players > 0)
-                {
-                    int completedRounds = 0;
-
-                    foreach (var round in rounds)
-                    {
-                        int playedHoles = scores.Count(s => s.RoundId == round.Id);
-                        if (playedHoles >= 18)
-                            completedRounds++;
-                    }
-
-                    isFinished = completedRounds == players;
-                }
+                var metrics = metricsByCompetition[comp.Id];
 
                 rows.Add(new CompetitionRow
                 {
@@ -93,9 +73,11 @@ namespace AFG_Livescoring.Pages.Competitions
                     Date = comp.Date,
                     Mode = comp.Mode,
                     CourseName = comp.Course?.Name ?? "-",
-                    PlayerCount = players,
-                    HasStarted = hasStarted,
-                    IsFinished = isFinished
+                    PlayerCount = metrics.ParticipantsCount,
+                    HasStarted = metrics.HasStarted,
+                    IsFinished = metrics.IsFinished,
+                    CompletedRounds = metrics.CompletedRounds,
+                    TotalRounds = metrics.TotalRounds
                 });
             }
 

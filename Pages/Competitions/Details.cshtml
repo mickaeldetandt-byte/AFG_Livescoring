@@ -133,7 +133,7 @@
 
         <div class="stat-card">
             <div class="small text-muted">Cartes complètes</div>
-            <div class="fs-3 fw-bold">@Model.CompletedRounds</div>
+            <div class="fs-3 fw-bold">@Model.CompletedRounds / @Model.TotalRounds</div>
         </div>
     </div>
 
@@ -148,7 +148,7 @@
                 </div>
                 <div class="col-md-6">
                     <div><strong>Créée par :</strong> @(Model.Competition?.CreatedByUser?.Email ?? "-")</div>
-                    <div><strong>Auto fin par scores :</strong> @(Model.AutoFinishedByScores ? "Oui" : "Non")</div>
+                    <div><strong>Structure sportive complète :</strong> @(Model.IsSportingStructureComplete ? "Oui" : "Non")</div>
                     <div><strong>ID :</strong> @Model.Id</div>
                 </div>
             </div>
