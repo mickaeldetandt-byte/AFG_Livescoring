@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -33,7 +34,28 @@ namespace AFG_Livescoring.Pages
         public List<Course> Courses { get; set; } = new();
 
         [BindProperty]
-        public Competition NewCompetition { get; set; } = new();
+        public CompetitionInputModel NewCompetition { get; set; } = new();
+
+        public sealed class CompetitionInputModel
+        {
+            [Required(ErrorMessage = "Le nom de la compétition est obligatoire.")]
+            public string Name { get; set; } = string.Empty;
+
+            [Required]
+            public DateTime Date { get; set; } = DateTime.Today;
+
+            [Required(ErrorMessage = "Veuillez sélectionner un parcours.")]
+            public int? CourseId { get; set; }
+
+            [Required]
+            public string Mode { get; set; } = "Competition";
+
+            public CompetitionType CompetitionType { get; set; } =
+                CompetitionType.IndividualStrokePlay;
+
+            public CompetitionVisibility Visibility { get; set; } =
+                CompetitionVisibility.Public;
+        }
 
         public class CompetitionStateInfo
         {
@@ -55,12 +77,9 @@ namespace AFG_Livescoring.Pages
             LoadCompetitionsAndStates(scope);
 
             NewCompetition.Date = DateTime.Today;
-            NewCompetition.ScoringMode = ScoringMode.SquadOnly;
             NewCompetition.Mode = "Competition";
             NewCompetition.CompetitionType = CompetitionType.IndividualStrokePlay;
             NewCompetition.Visibility = CompetitionVisibility.Public;
-            NewCompetition.Status = CompetitionStatus.Draft;
-            NewCompetition.IsActive = true;
 
             return Page();
         }
@@ -162,17 +181,20 @@ namespace AFG_Livescoring.Pages
 
         public IActionResult OnPostAdd()
         {
-            LoadCourses();
-
             if (!User.Identity?.IsAuthenticated ?? true)
             {
                 LogOperationRefused("CreateMain", null, null, "Unauthenticated");
                 return RedirectToPage("/Account/Login");
             }
 
-            if (!CanCreateCompetition())
+            var currentUser = GetCurrentUser();
+            if (!CanCreateCompetition(currentUser))
             {
-                LogOperationRefused("CreateMain", null, null, "RoleNotAllowed");
+                LogOperationRefused(
+                    "CreateMain",
+                    null,
+                    currentUser?.ClubId,
+                    "RoleOrClubNotAllowed");
                 return Forbid();
             }
 
@@ -181,14 +203,18 @@ namespace AFG_Livescoring.Pages
                 ModelState.AddModelError(string.Empty, "Le nom de la compétition est obligatoire.");
             }
 
-            if (NewCompetition.CourseId == null || !_db.Courses.Any(c => c.Id == NewCompetition.CourseId))
-            {
-                ModelState.AddModelError(string.Empty, "Veuillez sélectionner un parcours.");
-            }
+            var courseIsActive = NewCompetition.CourseId.HasValue
+                                 && _db.Courses
+                                     .AsNoTracking()
+                                     .Any(course =>
+                                         course.Id == NewCompetition.CourseId.Value
+                                         && course.IsActive);
 
-            if (!Enum.IsDefined(typeof(ScoringMode), NewCompetition.ScoringMode))
+            if (!courseIsActive)
             {
-                ModelState.AddModelError(string.Empty, "Mode invalide.");
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Le parcours sélectionné est introuvable ou inactif.");
             }
 
             if (!Enum.IsDefined(typeof(CompetitionType), NewCompetition.CompetitionType))
@@ -201,42 +227,16 @@ namespace AFG_Livescoring.Pages
                 ModelState.AddModelError(string.Empty, "Visibilité invalide.");
             }
 
-            if (string.IsNullOrWhiteSpace(NewCompetition.Mode))
+            if (!string.Equals(
+                    NewCompetition.Mode,
+                    "Competition",
+                    StringComparison.Ordinal)
+                && !string.Equals(
+                    NewCompetition.Mode,
+                    "Training",
+                    StringComparison.Ordinal))
             {
-                NewCompetition.Mode = "Competition";
-            }
-
-            if (NewCompetition.Mode != "Competition" && NewCompetition.Mode != "Training")
-            {
-                NewCompetition.Mode = "Competition";
-            }
-
-            if (NewCompetition.Mode == "Training")
-            {
-                NewCompetition.ScoringMode = ScoringMode.IndividualAllowed;
-            }
-            else
-            {
-                NewCompetition.ScoringMode = ScoringMode.SquadOnly;
-            }
-
-            NewCompetition.Status = CompetitionStatus.Draft;
-            NewCompetition.IsActive = true;
-
-            var currentUser = GetCurrentUser();
-
-            if (currentUser == null)
-            {
-                ModelState.AddModelError(string.Empty, "Utilisateur introuvable.");
-            }
-            else
-            {
-                NewCompetition.CreatedByUserId = currentUser.Id;
-
-                if (string.Equals(currentUser.Role, "Club", StringComparison.OrdinalIgnoreCase))
-                {
-                    NewCompetition.ClubId = currentUser.ClubId;
-                }
+                ModelState.AddModelError(string.Empty, "Mode invalide.");
             }
 
             if (!ModelState.IsValid)
@@ -250,16 +250,43 @@ namespace AFG_Livescoring.Pages
                 return Page();
             }
 
-            _db.Competitions.Add(NewCompetition);
+            var isTraining = string.Equals(
+                NewCompetition.Mode,
+                "Training",
+                StringComparison.Ordinal);
+
+            var competition = new Competition
+            {
+                Name = NewCompetition.Name.Trim(),
+                Date = NewCompetition.Date,
+                CourseId = NewCompetition.CourseId,
+                Mode = NewCompetition.Mode,
+                CompetitionType = NewCompetition.CompetitionType,
+                Visibility = NewCompetition.Visibility,
+                ScoringMode = isTraining
+                    ? ScoringMode.IndividualAllowed
+                    : ScoringMode.SquadOnly,
+                Status = CompetitionStatus.Draft,
+                IsActive = true,
+                CreatedByUserId = currentUser!.Id,
+                ClubId = string.Equals(
+                    currentUser.Role,
+                    "Club",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? currentUser.ClubId
+                    : null
+            };
+
+            _db.Competitions.Add(competition);
             _db.SaveChanges();
 
             _logger.LogInformation(
                 "Competition operation {Operation} succeeded for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}",
                 "CreateMain",
-                NewCompetition.Id,
+                competition.Id,
                 GetCurrentUserIdentifier(),
                 GetCurrentRole(),
-                NewCompetition.ClubId);
+                competition.ClubId);
             TempData["SuccessMessage"] = "Compétition créée avec succès.";
             return RedirectToPage();
         }
@@ -474,12 +501,24 @@ namespace AFG_Livescoring.Pages
             User.FindFirstValue(ClaimTypes.Role)
             ?? "unknown";
 
-        private bool CanCreateCompetition()
+        private static bool CanCreateCompetition(AppUser? currentUser)
         {
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
+            if (currentUser == null)
+                return false;
 
-            return string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(role, "Club", StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(
+                    currentUser.Role,
+                    "Admin",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return string.Equals(
+                       currentUser.Role,
+                       "Club",
+                       StringComparison.OrdinalIgnoreCase)
+                   && currentUser.ClubId.HasValue;
         }
 
         private bool CanManageCompetition(Competition competition)
@@ -507,12 +546,16 @@ namespace AFG_Livescoring.Pages
 
         private AppUser? GetCurrentUser()
         {
-            var email = User.Identity?.Name;
-
-            if (string.IsNullOrWhiteSpace(email))
+            if (!int.TryParse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier),
+                    out var userId))
+            {
                 return null;
+            }
 
-            return _db.AppUsers.FirstOrDefault(u => u.Email == email);
+            return _db.AppUsers
+                .AsNoTracking()
+                .SingleOrDefault(user => user.Id == userId);
         }
     }
 }
