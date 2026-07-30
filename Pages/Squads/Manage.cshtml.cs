@@ -477,16 +477,21 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
-        public IActionResult OnPostGenerateMatchPlay(int competitionId, int squadId)
+        public async Task<IActionResult> OnPostGenerateMatchPlayAsync(int competitionId, int squadId)
         {
             this.competitionId = competitionId;
 
-            var comp = _db.Competitions
-                .AsNoTracking()
-                .FirstOrDefault(c => c.Id == competitionId);
+            if (!await _authorizationService.CanManageCompetitionAsync(
+                    User,
+                    competitionId,
+                    HttpContext.RequestAborted))
+            {
+                return Forbid();
+            }
 
-            if (comp == null)
-                return RedirectToPage("/Competitions");
+            var comp = await _db.Competitions
+                .AsNoTracking()
+                .FirstAsync(c => c.Id == competitionId, HttpContext.RequestAborted);
 
             if (!IsMatchPlayType(comp.CompetitionType))
             {
@@ -494,34 +499,76 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
-            if (CompetitionHasScores(competitionId))
-            {
-                TempData["Message"] = "Impossible de générer les matchs : des scores Match Play existent déjà.";
-                return RedirectToPage(new { competitionId });
-            }
+            var squad = await _db.Squads
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    s => s.Id == squadId && s.CompetitionId == competitionId,
+                    HttpContext.RequestAborted);
 
-            var squad = _db.Squads.FirstOrDefault(s => s.Id == squadId && s.CompetitionId == competitionId);
             if (squad == null)
             {
                 TempData["Message"] = "Squad introuvable.";
                 return RedirectToPage(new { competitionId });
             }
 
-            bool alreadyExists = _db.MatchPlayRounds.Any(m => m.CompetitionId == competitionId && m.SquadId == squadId);
-            if (alreadyExists)
+            var existingMatches = await _db.MatchPlayRounds
+                .Where(m => m.CompetitionId == competitionId && m.SquadId == squadId)
+                .ToListAsync(HttpContext.RequestAborted);
+
+            var existingMatchIds = existingMatches.Select(m => m.Id).ToList();
+            var existingHoleResults = await _db.MatchPlayHoleResults
+                .Where(h => existingMatchIds.Contains(h.MatchPlayRoundId))
+                .ToListAsync(HttpContext.RequestAborted);
+
+            var existingTeams = await _db.Teams
+                .Where(t => t.CompetitionId == competitionId && t.SquadId == squadId)
+                .ToListAsync(HttpContext.RequestAborted);
+
+            var existingTeamIds = existingTeams.Select(t => t.Id).ToList();
+            var allExistingTeamRounds = await _db.TeamRounds
+                .Where(tr => existingTeamIds.Contains(tr.TeamId))
+                .ToListAsync(HttpContext.RequestAborted);
+
+            var scopedTeamRounds = allExistingTeamRounds
+                .Where(tr => tr.CompetitionId == competitionId && tr.SquadId == squadId)
+                .ToList();
+            var scopedTeamRoundIds = scopedTeamRounds.Select(tr => tr.Id).ToList();
+            var existingTeamScores = await _db.TeamScores
+                .Where(ts => scopedTeamRoundIds.Contains(ts.TeamRoundId))
+                .ToListAsync(HttpContext.RequestAborted);
+
+            if (existingHoleResults.Any() || existingTeamScores.Any())
+            {
+                TempData["Message"] = "Impossible de générer les matchs : des scores ou résultats existent déjà.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            if (existingMatches.Any())
             {
                 TempData["Message"] = "Les matchs existent déjà pour ce squad.";
                 return RedirectToPage(new { competitionId });
             }
 
+            var squadRounds = await _db.Rounds
+                .Include(r => r.Player)
+                .Where(r => r.CompetitionId == competitionId && r.SquadId == squadId)
+                .OrderBy(r => r.Id)
+                .ToListAsync(HttpContext.RequestAborted);
+
+            if (squadRounds.Any(r => r.Player == null))
+            {
+                TempData["Message"] = "Un joueur du squad est introuvable.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            if (squadRounds.Select(r => r.PlayerId).Distinct().Count() != squadRounds.Count)
+            {
+                TempData["Message"] = "Un joueur ne peut apparaître qu'une seule fois dans le squad.";
+                return RedirectToPage(new { competitionId });
+            }
+
             if (comp.CompetitionType == CompetitionType.MatchPlayIndividual)
             {
-                var squadRounds = _db.Rounds
-                    .Include(r => r.Player)
-                    .Where(r => r.CompetitionId == competitionId && r.SquadId == squadId)
-                    .OrderBy(r => r.Id)
-                    .ToList();
-
                 if (squadRounds.Count < 2)
                 {
                     TempData["Message"] = "Il faut au moins 2 joueurs dans le squad.";
@@ -534,81 +581,84 @@ namespace AFG_Livescoring.Pages.Squads
                     return RedirectToPage(new { competitionId });
                 }
 
+                var individualPairs = new List<(Round RoundA, Round RoundB)>();
                 for (int i = 0; i < squadRounds.Count; i += 2)
+                    individualPairs.Add((squadRounds[i], squadRounds[i + 1]));
+
+                await using var transaction = await _db.Database.BeginTransactionAsync(
+                    HttpContext.RequestAborted);
+
+                try
                 {
-                    var roundA = squadRounds[i];
-                    var roundB = squadRounds[i + 1];
+                    var generatedMatches = new List<(Team TeamA, Team TeamB)>();
 
-                    var teamA = new Team
+                    foreach (var pair in individualPairs)
                     {
-                        CompetitionId = competitionId,
-                        SquadId = squadId,
-                        Name = $"{roundA.Player?.FirstName} {roundA.Player?.LastName}".Trim(),
-                        IsActive = true
-                    };
+                        var teamA = new Team
+                        {
+                            CompetitionId = competitionId,
+                            SquadId = squadId,
+                            Name = $"{pair.RoundA.Player!.FirstName} {pair.RoundA.Player.LastName}".Trim(),
+                            IsActive = true
+                        };
+                        var teamB = new Team
+                        {
+                            CompetitionId = competitionId,
+                            SquadId = squadId,
+                            Name = $"{pair.RoundB.Player!.FirstName} {pair.RoundB.Player.LastName}".Trim(),
+                            IsActive = true
+                        };
 
-                    var teamB = new Team
+                        _db.Teams.AddRange(teamA, teamB);
+                        generatedMatches.Add((teamA, teamB));
+                    }
+
+                    await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+                    for (int i = 0; i < individualPairs.Count; i++)
                     {
-                        CompetitionId = competitionId,
-                        SquadId = squadId,
-                        Name = $"{roundB.Player?.FirstName} {roundB.Player?.LastName}".Trim(),
-                        IsActive = true
-                    };
+                        var pair = individualPairs[i];
+                        var generated = generatedMatches[i];
 
-                    _db.Teams.Add(teamA);
-                    _db.Teams.Add(teamB);
-                    _db.SaveChanges();
+                        _db.TeamPlayers.AddRange(
+                            new TeamPlayer { TeamId = generated.TeamA.Id, PlayerId = pair.RoundA.PlayerId, Order = 1 },
+                            new TeamPlayer { TeamId = generated.TeamB.Id, PlayerId = pair.RoundB.PlayerId, Order = 1 });
+                        _db.TeamRounds.AddRange(
+                            new TeamRound
+                            {
+                                CompetitionId = competitionId,
+                                TeamId = generated.TeamA.Id,
+                                SquadId = squadId,
+                                IsLocked = false
+                            },
+                            new TeamRound
+                            {
+                                CompetitionId = competitionId,
+                                TeamId = generated.TeamB.Id,
+                                SquadId = squadId,
+                                IsLocked = false
+                            });
+                        _db.MatchPlayRounds.Add(new MatchPlayRound
+                        {
+                            CompetitionId = competitionId,
+                            SquadId = squadId,
+                            TeamAId = generated.TeamA.Id,
+                            TeamBId = generated.TeamB.Id,
+                            CurrentHole = 1,
+                            IsFinished = false,
+                            StatusText = "AS",
+                            ResultText = ""
+                        });
+                    }
 
-                    _db.TeamPlayers.Add(new TeamPlayer
-                    {
-                        TeamId = teamA.Id,
-                        PlayerId = roundA.PlayerId,
-                        Order = 1
-                    });
-
-                    _db.TeamPlayers.Add(new TeamPlayer
-                    {
-                        TeamId = teamB.Id,
-                        PlayerId = roundB.PlayerId,
-                        Order = 1
-                    });
-
-                    _db.SaveChanges();
-
-                    var teamRoundA = new TeamRound
-                    {
-                        CompetitionId = competitionId,
-                        TeamId = teamA.Id,
-                        SquadId = squadId,
-                        IsLocked = false
-                    };
-
-                    var teamRoundB = new TeamRound
-                    {
-                        CompetitionId = competitionId,
-                        TeamId = teamB.Id,
-                        SquadId = squadId,
-                        IsLocked = false
-                    };
-
-                    _db.TeamRounds.Add(teamRoundA);
-                    _db.TeamRounds.Add(teamRoundB);
-                    _db.SaveChanges();
-
-                    _db.MatchPlayRounds.Add(new MatchPlayRound
-                    {
-                        CompetitionId = competitionId,
-                        SquadId = squadId,
-                        TeamAId = teamA.Id,
-                        TeamBId = teamB.Id,
-                        CurrentHole = 1,
-                        IsFinished = false,
-                        StatusText = "AS",
-                        ResultText = ""
-                    });
+                    await _db.SaveChangesAsync(HttpContext.RequestAborted);
+                    await transaction.CommitAsync(HttpContext.RequestAborted);
                 }
-
-                _db.SaveChanges();
+                catch
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    throw;
+                }
 
                 TempData["Message"] = "Matchs Match Play générés avec succès.";
                 return RedirectToPage(new { competitionId });
@@ -616,77 +666,127 @@ namespace AFG_Livescoring.Pages.Squads
 
             if (IsDoublesMatchPlayType(comp.CompetitionType))
             {
-                var teams = _db.Teams
+                var activeTeams = await _db.Teams
                     .Include(t => t.TeamPlayers)
-                        .ThenInclude(tp => tp.Player)
                     .Where(t => t.CompetitionId == competitionId && t.SquadId == squadId && t.IsActive)
                     .OrderBy(t => t.Id)
-                    .ToList();
+                    .ToListAsync(HttpContext.RequestAborted);
 
-                if (teams.Count != 2)
+                bool replaceTeams = activeTeams.Count != 2;
+                var teamsToUse = activeTeams;
+                var teamPlayersToDelete = new List<TeamPlayer>();
+                var teamRoundsToDelete = new List<TeamRound>();
+
+                if (!replaceTeams)
                 {
-                    var squadRounds = _db.Rounds
-                        .Include(r => r.Player)
-                        .Where(r => r.CompetitionId == competitionId && r.SquadId == squadId)
-                        .OrderBy(r => r.Id)
+                    var activeTeamIds = activeTeams.Select(t => t.Id).ToHashSet();
+                    var activeTeamPlayers = activeTeams.SelectMany(t => t.TeamPlayers).ToList();
+                    var activeTeamRounds = allExistingTeamRounds
+                        .Where(tr => activeTeamIds.Contains(tr.TeamId))
                         .ToList();
+                    var squadPlayerIds = squadRounds.Select(r => r.PlayerId).ToHashSet();
+                    var selectedPlayerIds = activeTeamPlayers.Select(tp => tp.PlayerId).ToList();
 
+                    if (activeTeams.Any(t => t.TeamPlayers.Count != 2)
+                        || selectedPlayerIds.Count != 4
+                        || selectedPlayerIds.Distinct().Count() != 4
+                        || selectedPlayerIds.Any(playerId => !squadPlayerIds.Contains(playerId))
+                        || activeTeamRounds.Any(tr =>
+                            tr.CompetitionId != competitionId || tr.SquadId != squadId))
+                    {
+                        TempData["Message"] = "La structure des équipes Match Play doubles est incohérente.";
+                        return RedirectToPage(new { competitionId });
+                    }
+                }
+                else
+                {
                     if (squadRounds.Count != 4)
                     {
                         TempData["Message"] = "Le Match Play doubles nécessite 4 joueurs dans le squad.";
                         return RedirectToPage(new { competitionId });
                     }
 
-                    CreateOrReplaceAutoDoublesTeams(competitionId, squadId, squadRounds);
-
-                    teams = _db.Teams
-                        .Include(t => t.TeamPlayers)
-                            .ThenInclude(tp => tp.Player)
-                        .Where(t => t.CompetitionId == competitionId && t.SquadId == squadId && t.IsActive)
-                        .OrderBy(t => t.Id)
-                        .ToList();
-                }
-
-                if (teams.Count != 2)
-                {
-                    TempData["Message"] = "Impossible de créer ou retrouver les 2 équipes pour le Match Play doubles.";
-                    return RedirectToPage(new { competitionId });
-                }
-
-                foreach (var team in teams)
-                {
-                    bool hasTeamRound = _db.TeamRounds.Any(tr =>
-                        tr.CompetitionId == competitionId &&
-                        tr.SquadId == squadId &&
-                        tr.TeamId == team.Id);
-
-                    if (!hasTeamRound)
+                    if (allExistingTeamRounds.Any(tr =>
+                            tr.CompetitionId != competitionId || tr.SquadId != squadId))
                     {
-                        _db.TeamRounds.Add(new TeamRound
-                        {
-                            CompetitionId = competitionId,
-                            TeamId = team.Id,
-                            SquadId = squadId,
-                            IsLocked = false
-                        });
+                        TempData["Message"] = "La structure des équipes Match Play doubles est incohérente.";
+                        return RedirectToPage(new { competitionId });
                     }
+
+                    var matchesUsingExistingTeamsOutOfScope = await _db.MatchPlayRounds.AnyAsync(
+                        m => (existingTeamIds.Contains(m.TeamAId)
+                              || existingTeamIds.Contains(m.TeamBId)
+                              || (m.WinnerTeamId.HasValue && existingTeamIds.Contains(m.WinnerTeamId.Value)))
+                             && (m.CompetitionId != competitionId || m.SquadId != squadId),
+                        HttpContext.RequestAborted);
+
+                    if (matchesUsingExistingTeamsOutOfScope)
+                    {
+                        TempData["Message"] = "La structure des équipes Match Play doubles est incohérente.";
+                        return RedirectToPage(new { competitionId });
+                    }
+
+                    teamPlayersToDelete = await _db.TeamPlayers
+                        .Where(tp => existingTeamIds.Contains(tp.TeamId))
+                        .ToListAsync(HttpContext.RequestAborted);
+                    teamRoundsToDelete = scopedTeamRounds;
                 }
 
-                _db.SaveChanges();
+                await using var transaction = await _db.Database.BeginTransactionAsync(
+                    HttpContext.RequestAborted);
 
-                _db.MatchPlayRounds.Add(new MatchPlayRound
+                try
                 {
-                    CompetitionId = competitionId,
-                    SquadId = squadId,
-                    TeamAId = teams[0].Id,
-                    TeamBId = teams[1].Id,
-                    CurrentHole = 1,
-                    IsFinished = false,
-                    StatusText = "AS",
-                    ResultText = ""
-                });
+                    if (replaceTeams)
+                    {
+                        teamsToUse = (await CreateOrReplaceAutoDoublesTeamsAsync(
+                            competitionId,
+                            squadId,
+                            squadRounds,
+                            existingTeams,
+                            teamPlayersToDelete,
+                            teamRoundsToDelete)).ToList();
+                    }
+                    else
+                    {
+                        var existingScopedTeamIds = scopedTeamRounds
+                            .Select(tr => tr.TeamId)
+                            .ToHashSet();
 
-                _db.SaveChanges();
+                        foreach (var team in teamsToUse.Where(t => !existingScopedTeamIds.Contains(t.Id)))
+                        {
+                            _db.TeamRounds.Add(new TeamRound
+                            {
+                                CompetitionId = competitionId,
+                                TeamId = team.Id,
+                                SquadId = squadId,
+                                IsLocked = false
+                            });
+                        }
+
+                        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+                    }
+
+                    _db.MatchPlayRounds.Add(new MatchPlayRound
+                    {
+                        CompetitionId = competitionId,
+                        SquadId = squadId,
+                        TeamAId = teamsToUse[0].Id,
+                        TeamBId = teamsToUse[1].Id,
+                        CurrentHole = 1,
+                        IsFinished = false,
+                        StatusText = "AS",
+                        ResultText = ""
+                    });
+
+                    await _db.SaveChangesAsync(HttpContext.RequestAborted);
+                    await transaction.CommitAsync(HttpContext.RequestAborted);
+                }
+                catch
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    throw;
+                }
 
                 TempData["Message"] = "Match doubles Match Play généré avec succès.";
                 return RedirectToPage(new { competitionId });
@@ -1076,40 +1176,24 @@ namespace AFG_Livescoring.Pages.Squads
             return $"{p1} / {p2}";
         }
 
-        private void CreateOrReplaceAutoDoublesTeams(int competitionId, int squadId, List<Round> squadRounds)
+        private async Task<IReadOnlyList<Team>> CreateOrReplaceAutoDoublesTeamsAsync(
+            int competitionId,
+            int squadId,
+            List<Round> squadRounds,
+            List<Team> existingTeams,
+            List<TeamPlayer> existingTeamPlayers,
+            List<TeamRound> existingTeamRounds)
         {
-            var existingTeams = _db.Teams
-                .Where(t => t.CompetitionId == competitionId && t.SquadId == squadId)
-                .ToList();
-
             if (existingTeams.Any())
             {
-                var existingTeamIds = existingTeams.Select(t => t.Id).ToList();
-
-                var existingTeamScores = _db.TeamScores
-                    .Include(ts => ts.TeamRound)
-                    .Where(ts => ts.TeamRound != null && existingTeamIds.Contains(ts.TeamRound.TeamId))
-                    .ToList();
-
-                if (existingTeamScores.Any())
-                    _db.TeamScores.RemoveRange(existingTeamScores);
-
-                var existingTeamRounds = _db.TeamRounds
-                    .Where(tr => existingTeamIds.Contains(tr.TeamId))
-                    .ToList();
-
                 if (existingTeamRounds.Any())
                     _db.TeamRounds.RemoveRange(existingTeamRounds);
-
-                var existingTeamPlayers = _db.TeamPlayers
-                    .Where(tp => existingTeamIds.Contains(tp.TeamId))
-                    .ToList();
 
                 if (existingTeamPlayers.Any())
                     _db.TeamPlayers.RemoveRange(existingTeamPlayers);
 
                 _db.Teams.RemoveRange(existingTeams);
-                _db.SaveChanges();
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
             }
 
             var teamA = new Team
@@ -1130,14 +1214,12 @@ namespace AFG_Livescoring.Pages.Squads
 
             _db.Teams.Add(teamA);
             _db.Teams.Add(teamB);
-            _db.SaveChanges();
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
             _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamA.Id, PlayerId = squadRounds[0].PlayerId, Order = 1 });
             _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamA.Id, PlayerId = squadRounds[1].PlayerId, Order = 2 });
             _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamB.Id, PlayerId = squadRounds[2].PlayerId, Order = 1 });
             _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamB.Id, PlayerId = squadRounds[3].PlayerId, Order = 2 });
-
-            _db.SaveChanges();
 
             _db.TeamRounds.Add(new TeamRound
             {
@@ -1155,7 +1237,8 @@ namespace AFG_Livescoring.Pages.Squads
                 IsLocked = false
             });
 
-            _db.SaveChanges();
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            return new[] { teamA, teamB };
         }
 
         private void LoadSquadsAndUnassigned()
