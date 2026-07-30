@@ -11,10 +11,14 @@ namespace AFG_Livescoring.Pages.Squads
     public class ManageModel : PageModel
     {
         private readonly AppDbContext _db;
+        private readonly ICompetitionAuthorizationService _authorizationService;
 
-        public ManageModel(AppDbContext db)
+        public ManageModel(
+            AppDbContext db,
+            ICompetitionAuthorizationService authorizationService)
         {
             _db = db;
+            _authorizationService = authorizationService;
         }
 
         [BindProperty(SupportsGet = true)]
@@ -57,8 +61,11 @@ namespace AFG_Livescoring.Pages.Squads
             public List<TeamView> Teams { get; set; } = new();
         }
 
-        public IActionResult OnGet()
+        public async Task<IActionResult> OnGetAsync()
         {
+            if (!await CanManageCompetitionAsync(competitionId))
+                return Forbid();
+
             var comp = _db.Competitions
                 .AsNoTracking()
                 .FirstOrDefault(c => c.Id == competitionId);
@@ -88,16 +95,23 @@ namespace AFG_Livescoring.Pages.Squads
             return Page();
         }
 
-        public IActionResult OnPostGenerate(int competitionId, int squadSize)
+        public async Task<IActionResult> OnPostGenerateAsync(
+            int competitionId,
+            int squadSize)
         {
             this.competitionId = competitionId;
 
-            var comp = _db.Competitions
-                .AsNoTracking()
-                .FirstOrDefault(c => c.Id == competitionId);
+            if (!await _authorizationService.CanManageCompetitionAsync(
+                    User,
+                    competitionId,
+                    HttpContext.RequestAborted))
+            {
+                return Forbid();
+            }
 
-            if (comp == null)
-                return RedirectToPage("/Competitions");
+            var comp = await _db.Competitions
+                .AsNoTracking()
+                .FirstAsync(c => c.Id == competitionId, HttpContext.RequestAborted);
 
             CompetitionName = comp.Name;
             IsTraining = IsTrainingMode(comp);
@@ -124,22 +138,10 @@ namespace AFG_Livescoring.Pages.Squads
             if (squadSize < minAllowed) squadSize = minAllowed;
             if (squadSize > maxAllowed) squadSize = maxAllowed;
 
-            if (IsTraining)
-            {
-                foreach (var r in _db.Rounds.Where(r => r.CompetitionId == competitionId))
-                    r.SquadId = null;
-
-                var existingSquads = _db.Squads.Where(s => s.CompetitionId == competitionId).ToList();
-                if (existingSquads.Any())
-                    _db.Squads.RemoveRange(existingSquads);
-
-                _db.SaveChanges();
-            }
-
-            var rounds = _db.Rounds
+            var rounds = await _db.Rounds
                 .Include(r => r.Player)
                 .Where(r => r.CompetitionId == competitionId)
-                .ToList();
+                .ToListAsync(HttpContext.RequestAborted);
 
             if (!rounds.Any())
             {
@@ -147,7 +149,9 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
-            if (!IsTraining && _db.Squads.Any(s => s.CompetitionId == competitionId))
+            if (!IsTraining && await _db.Squads.AnyAsync(
+                    s => s.CompetitionId == competitionId,
+                    HttpContext.RequestAborted))
             {
                 TempData["Message"] = "Des squads existent déjà. Clique sur Réinitialiser avant de regénérer.";
                 return RedirectToPage(new { competitionId });
@@ -195,31 +199,63 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
-            int i = 0;
-            foreach (var take in sizes)
+            var distribution = new List<List<Round>>(sizes.Count);
+            int roundIndex = 0;
+
+            foreach (var size in sizes)
             {
-                var chunk = rounds.Skip(i).Take(take).ToList();
+                distribution.Add(rounds.Skip(roundIndex).Take(size).ToList());
+                roundIndex += size;
+            }
 
-                var squad = new Squad
+            await using var transaction = await _db.Database.BeginTransactionAsync(
+                HttpContext.RequestAborted);
+
+            try
+            {
+                if (IsTraining)
                 {
-                    CompetitionId = competitionId,
-                    Name = $"Squad {squadIndex}",
-                    StartHole = startHole
-                };
+                    foreach (var round in rounds)
+                        round.SquadId = null;
 
-                _db.Squads.Add(squad);
-                _db.SaveChanges();
+                    var existingSquads = await _db.Squads
+                        .Where(s => s.CompetitionId == competitionId)
+                        .ToListAsync(HttpContext.RequestAborted);
 
-                foreach (var r in chunk)
-                    r.SquadId = squad.Id;
+                    if (existingSquads.Any())
+                        _db.Squads.RemoveRange(existingSquads);
 
-                _db.SaveChanges();
+                    await _db.SaveChangesAsync(HttpContext.RequestAborted);
+                }
 
-                squadIndex++;
-                startHole++;
-                if (startHole > 18) startHole = 18;
+                foreach (var chunk in distribution)
+                {
+                    var squad = new Squad
+                    {
+                        CompetitionId = competitionId,
+                        Name = $"Squad {squadIndex}",
+                        StartHole = startHole
+                    };
 
-                i += take;
+                    _db.Squads.Add(squad);
+                    await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+                    foreach (var round in chunk)
+                        round.SquadId = squad.Id;
+
+                    await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+                    squadIndex++;
+                    startHole++;
+                    if (startHole > 18) startHole = 18;
+                }
+
+                await transaction.CommitAsync(HttpContext.RequestAborted);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
             }
 
             TempData["Message"] = IsTraining
@@ -608,9 +644,12 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
-        public IActionResult OnPostCreateSquad(int competitionId)
+        public async Task<IActionResult> OnPostCreateSquadAsync(int competitionId)
         {
             this.competitionId = competitionId;
+
+            if (!await CanManageCompetitionAsync(competitionId))
+                return Forbid();
 
             var comp = _db.Competitions.AsNoTracking().FirstOrDefault(c => c.Id == competitionId);
             if (comp == null)
@@ -638,9 +677,12 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
-        public IActionResult OnPostAddAndAssign(int competitionId, int playerId, int squadId)
+        public async Task<IActionResult> OnPostAddAndAssignAsync(int competitionId, int playerId, int squadId)
         {
             this.competitionId = competitionId;
+
+            if (!await CanManageCompetitionAsync(competitionId))
+                return Forbid();
 
             var comp = _db.Competitions
                 .AsNoTracking()
@@ -655,7 +697,9 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
-            var player = _db.Players.AsNoTracking().FirstOrDefault(p => p.Id == playerId);
+            var player = _db.Players
+                .AsNoTracking()
+                .FirstOrDefault(p => p.Id == playerId && p.IsActive);
             if (player == null)
             {
                 TempData["Message"] = "Joueur introuvable.";
@@ -700,9 +744,12 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
-        public IActionResult OnPostAssign(int competitionId, int roundId, int squadId)
+        public async Task<IActionResult> OnPostAssignAsync(int competitionId, int roundId, int squadId)
         {
             this.competitionId = competitionId;
+
+            if (!await CanManageCompetitionAsync(competitionId))
+                return Forbid();
 
             var comp = _db.Competitions.AsNoTracking().FirstOrDefault(c => c.Id == competitionId);
             if (comp == null)
@@ -714,15 +761,18 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
-            var round = _db.Rounds.Include(r => r.Player).FirstOrDefault(r => r.Id == roundId);
-            if (round == null || round.CompetitionId != competitionId)
+            var round = _db.Rounds
+                .Include(r => r.Player)
+                .FirstOrDefault(r => r.Id == roundId && r.CompetitionId == competitionId);
+            if (round == null)
             {
                 TempData["Message"] = "Round introuvable ou invalide.";
                 return RedirectToPage(new { competitionId });
             }
 
-            var squad = _db.Squads.FirstOrDefault(s => s.Id == squadId);
-            if (squad == null || squad.CompetitionId != competitionId)
+            var squad = _db.Squads
+                .FirstOrDefault(s => s.Id == squadId && s.CompetitionId == competitionId);
+            if (squad == null)
             {
                 TempData["Message"] = "Squad introuvable ou invalide.";
                 return RedirectToPage(new { competitionId });
@@ -744,9 +794,12 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
-        public IActionResult OnPostRemove(int competitionId, int roundId)
+        public async Task<IActionResult> OnPostRemoveAsync(int competitionId, int roundId)
         {
             this.competitionId = competitionId;
+
+            if (!await CanManageCompetitionAsync(competitionId))
+                return Forbid();
 
             var comp = _db.Competitions.AsNoTracking().FirstOrDefault(c => c.Id == competitionId);
             if (comp == null)
@@ -758,8 +811,10 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
-            var round = _db.Rounds.Include(r => r.Player).FirstOrDefault(r => r.Id == roundId);
-            if (round == null || round.CompetitionId != competitionId)
+            var round = _db.Rounds
+                .Include(r => r.Player)
+                .FirstOrDefault(r => r.Id == roundId && r.CompetitionId == competitionId);
+            if (round == null)
             {
                 TempData["Message"] = "Round introuvable ou invalide.";
                 return RedirectToPage(new { competitionId });
@@ -902,6 +957,14 @@ namespace AFG_Livescoring.Pages.Squads
 
             TempData["Message"] = "Squads réinitialisés.";
             return RedirectToPage(new { competitionId });
+        }
+
+        private Task<bool> CanManageCompetitionAsync(int targetCompetitionId)
+        {
+            return _authorizationService.CanManageCompetitionAsync(
+                User,
+                targetCompetitionId,
+                HttpContext.RequestAborted);
         }
 
         private bool CompetitionHasScores(int compId)
