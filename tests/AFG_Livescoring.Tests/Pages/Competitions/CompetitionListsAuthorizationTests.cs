@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AFG_Livescoring.Models;
 using AFG_Livescoring.Pages;
+using AFG_Livescoring.Services;
 using AFG_Livescoring.Pages.Competitions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -294,7 +295,9 @@ public class CompetitionListsAuthorizationTests
 
         public CompetitionsModel CreateCompetitionsModel(int userId)
         {
-            return new CompetitionsModel(Db)
+            return new CompetitionsModel(
+                Db,
+                new CompetitionAuthorizationService(Db))
             {
                 PageContext = CreatePageContext(userId)
             };

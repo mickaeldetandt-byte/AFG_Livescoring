@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
+using AFG_Livescoring.Services;
 
 namespace AFG_Livescoring.Pages
 {
@@ -11,10 +12,14 @@ namespace AFG_Livescoring.Pages
     public class CompetitionsModel : PageModel
     {
         private readonly AppDbContext _db;
+        private readonly ICompetitionAuthorizationService _authorizationService;
 
-        public CompetitionsModel(AppDbContext db)
+        public CompetitionsModel(
+            AppDbContext db,
+            ICompetitionAuthorizationService authorizationService)
         {
             _db = db;
+            _authorizationService = authorizationService;
         }
 
         public List<Competition> Competitions { get; set; } = new();
@@ -271,69 +276,90 @@ namespace AFG_Livescoring.Pages
             return RedirectToPage();
         }
 
-        public IActionResult OnPostDelete(int id)
+        public async Task<IActionResult> OnPostDeleteAsync(int id)
         {
             if (!User.Identity?.IsAuthenticated ?? true)
                 return RedirectToPage("/Account/Login");
 
-            var comp = _db.Competitions.FirstOrDefault(c => c.Id == id);
+            var canManageCompetition = await _authorizationService
+                .CanManageCompetitionAsync(User, id, HttpContext.RequestAborted);
+
+            if (!canManageCompetition)
+            {
+                var competitionExists = await _db.Competitions
+                    .AsNoTracking()
+                    .AnyAsync(
+                        competition => competition.Id == id,
+                        HttpContext.RequestAborted);
+
+                return competitionExists ? Forbid() : RedirectToPage();
+            }
+
+            var comp = await _db.Competitions
+                .SingleOrDefaultAsync(
+                    competition => competition.Id == id,
+                    HttpContext.RequestAborted);
             if (comp == null)
             {
                 return RedirectToPage();
             }
 
-            if (!CanManageCompetition(comp))
-                return Forbid();
+            await using var transaction = await _db.Database.BeginTransactionAsync(
+                System.Data.IsolationLevel.Serializable,
+                HttpContext.RequestAborted);
+
+            try
+            {
+                var hasIndividualScores = await _db.Scores
+                    .AnyAsync(
+                        score => score.Round != null
+                                 && score.Round.CompetitionId == id,
+                        HttpContext.RequestAborted);
+
+                var hasTeamScores = await _db.TeamScores
+                    .AnyAsync(
+                        score => score.TeamRound != null
+                                 && score.TeamRound.CompetitionId == id,
+                        HttpContext.RequestAborted);
+
+                var hasMatchPlayHoleResults = await _db.MatchPlayHoleResults
+                    .AnyAsync(
+                        result => result.MatchPlayRound != null
+                                  && result.MatchPlayRound.CompetitionId == id,
+                        HttpContext.RequestAborted);
+
+                var hasRecordedMatchPlayResult = await _db.MatchPlayRounds
+                    .AnyAsync(
+                        match => match.CompetitionId == id
+                                 && (match.IsFinished
+                                     || match.WinnerTeamId.HasValue
+                                     || match.CurrentHole > 1
+                                     || match.StatusText != "AS"
+                                     || match.ResultText != string.Empty),
+                        HttpContext.RequestAborted);
+
+                if (hasIndividualScores
+                    || hasTeamScores
+                    || hasMatchPlayHoleResults
+                    || hasRecordedMatchPlayResult)
+                {
+                    await transaction.RollbackAsync(HttpContext.RequestAborted);
+                    TempData["ErrorMessage"] =
+                        "Impossible de supprimer cette compétition car elle contient déjà des scores ou des résultats.";
+                    return RedirectToPage();
+                }
 
             var rounds = _db.Rounds
                 .Where(r => r.CompetitionId == id)
                 .ToList();
 
-            var roundIds = rounds.Select(r => r.Id).ToList();
-
-            if (roundIds.Any())
-            {
-                var scores = _db.Scores
-                    .Where(s => roundIds.Contains(s.RoundId))
-                    .ToList();
-
-                if (scores.Any())
-                {
-                    _db.Scores.RemoveRange(scores);
-                    _db.SaveChanges();
-                }
-            }
-
             var matchPlayRounds = _db.MatchPlayRounds
                 .Where(m => m.CompetitionId == id)
                 .ToList();
 
-            var matchPlayRoundIds = matchPlayRounds.Select(m => m.Id).ToList();
-
-            if (matchPlayRoundIds.Any())
+            if (matchPlayRounds.Any())
             {
-                var matchPlayHoleResults = _db.MatchPlayHoleResults
-                    .Where(h => matchPlayRoundIds.Contains(h.MatchPlayRoundId))
-                    .ToList();
-
-                if (matchPlayHoleResults.Any())
-                {
-                    _db.MatchPlayHoleResults.RemoveRange(matchPlayHoleResults);
-                    _db.SaveChanges();
-                }
-
                 _db.MatchPlayRounds.RemoveRange(matchPlayRounds);
-                _db.SaveChanges();
-            }
-
-            if (rounds.Any())
-            {
-                foreach (var round in rounds)
-                {
-                    round.SquadId = null;
-                }
-
-                _db.SaveChanges();
             }
 
             var teamRounds = _db.TeamRounds
@@ -342,20 +368,7 @@ namespace AFG_Livescoring.Pages
 
             if (teamRounds.Any())
             {
-                var teamRoundIds = teamRounds.Select(tr => tr.Id).ToList();
-
-                var teamScores = _db.TeamScores
-                    .Where(ts => teamRoundIds.Contains(ts.TeamRoundId))
-                    .ToList();
-
-                if (teamScores.Any())
-                {
-                    _db.TeamScores.RemoveRange(teamScores);
-                    _db.SaveChanges();
-                }
-
                 _db.TeamRounds.RemoveRange(teamRounds);
-                _db.SaveChanges();
             }
 
             var teams = _db.Teams
@@ -373,17 +386,14 @@ namespace AFG_Livescoring.Pages
                 if (teamPlayers.Any())
                 {
                     _db.TeamPlayers.RemoveRange(teamPlayers);
-                    _db.SaveChanges();
                 }
 
                 _db.Teams.RemoveRange(teams);
-                _db.SaveChanges();
             }
 
             if (rounds.Any())
             {
                 _db.Rounds.RemoveRange(rounds);
-                _db.SaveChanges();
             }
 
             var squads = _db.Squads
@@ -393,14 +403,20 @@ namespace AFG_Livescoring.Pages
             if (squads.Any())
             {
                 _db.Squads.RemoveRange(squads);
-                _db.SaveChanges();
             }
 
             _db.Competitions.Remove(comp);
-            _db.SaveChanges();
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            await transaction.CommitAsync(HttpContext.RequestAborted);
 
             TempData["SuccessMessage"] = "Compétition supprimée avec succès.";
             return RedirectToPage();
+            }
+            catch
+            {
+                await transaction.RollbackAsync(HttpContext.RequestAborted);
+                throw;
+            }
         }
 
         private bool CanCreateCompetition()
