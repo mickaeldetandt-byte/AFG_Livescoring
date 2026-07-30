@@ -979,135 +979,20 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
-        public IActionResult OnPostClear(int competitionId)
+        public async Task<IActionResult> OnPostClearAsync(int competitionId)
         {
             this.competitionId = competitionId;
 
-            var comp = _db.Competitions
-                .AsNoTracking()
-                .FirstOrDefault(c => c.Id == competitionId);
-
-            if (comp == null)
-                return RedirectToPage("/Competitions");
-
-            bool isTraining = IsTrainingMode(comp);
-
-            if (!isTraining && CompetitionHasScores(competitionId))
+            if (!await _authorizationService.CanManageCompetitionAsync(
+                    User,
+                    competitionId,
+                    HttpContext.RequestAborted))
             {
-                TempData["Message"] = "Impossible de réinitialiser : des scores existent déjà pour cette compétition.";
-                return RedirectToPage(new { competitionId });
+                return Forbid();
             }
 
-            if (isTraining)
-            {
-                var roundIds = _db.Rounds
-                    .Where(r => r.CompetitionId == competitionId)
-                    .Select(r => r.Id)
-                    .ToList();
-
-                var scores = _db.Scores
-                    .Where(s => roundIds.Contains(s.RoundId))
-                    .ToList();
-
-                if (scores.Any())
-                    _db.Scores.RemoveRange(scores);
-
-                var roundsAll = _db.Rounds
-                    .Where(r => r.CompetitionId == competitionId)
-                    .ToList();
-
-                foreach (var r in roundsAll)
-                {
-                    r.SquadId = null;
-                    r.IsLocked = false;
-                }
-
-                var squadsAll = _db.Squads
-                    .Where(s => s.CompetitionId == competitionId)
-                    .ToList();
-
-                if (squadsAll.Any())
-                    _db.Squads.RemoveRange(squadsAll);
-
-                _db.SaveChanges();
-
-                TempData["Message"] = "Session d'entraînement réinitialisée.";
-                return RedirectToPage(new { competitionId });
-            }
-
-            var matchPlayResults = _db.MatchPlayHoleResults
-                .Include(h => h.MatchPlayRound)
-                .Where(h => h.MatchPlayRound != null && h.MatchPlayRound.CompetitionId == competitionId)
-                .ToList();
-
-            if (matchPlayResults.Any())
-            {
-                _db.MatchPlayHoleResults.RemoveRange(matchPlayResults);
-                _db.SaveChanges();
-            }
-
-            var matchPlayRounds = _db.MatchPlayRounds
-                .Where(m => m.CompetitionId == competitionId)
-                .ToList();
-
-            if (matchPlayRounds.Any())
-            {
-                _db.MatchPlayRounds.RemoveRange(matchPlayRounds);
-                _db.SaveChanges();
-            }
-
-            var teamRounds = _db.TeamRounds
-                .Where(tr => tr.CompetitionId == competitionId)
-                .ToList();
-
-            if (teamRounds.Any())
-            {
-                _db.TeamRounds.RemoveRange(teamRounds);
-                _db.SaveChanges();
-            }
-
-            var teams = _db.Teams
-                .Where(t => t.CompetitionId == competitionId)
-                .ToList();
-
-            if (teams.Any())
-            {
-                var teamIds = teams.Select(t => t.Id).ToList();
-
-                var teamPlayers = _db.TeamPlayers
-                    .Where(tp => teamIds.Contains(tp.TeamId))
-                    .ToList();
-
-                if (teamPlayers.Any())
-                {
-                    _db.TeamPlayers.RemoveRange(teamPlayers);
-                    _db.SaveChanges();
-                }
-
-                _db.Teams.RemoveRange(teams);
-                _db.SaveChanges();
-            }
-
-            var squads = _db.Squads
-                .Where(s => s.CompetitionId == competitionId)
-                .ToList();
-
-            var rounds = _db.Rounds
-                .Where(r => r.CompetitionId == competitionId && r.SquadId != null)
-                .ToList();
-
-            foreach (var r in rounds)
-                r.SquadId = null;
-
-            _db.SaveChanges();
-
-            if (squads.Any())
-            {
-                _db.Squads.RemoveRange(squads);
-                _db.SaveChanges();
-            }
-
-            TempData["Message"] = "Squads réinitialisés.";
+            TempData["Message"] =
+                "La réinitialisation globale est désactivée afin de protéger les scores et les résultats de la compétition.";
             return RedirectToPage(new { competitionId });
         }
 

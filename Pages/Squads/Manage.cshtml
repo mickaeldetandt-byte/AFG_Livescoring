@@ -87,15 +87,6 @@
                 </form>
 
                 <div class="d-flex flex-wrap gap-2">
-                    <form method="post" asp-page-handler="Clear" class="m-0">
-                        <input type="hidden" name="competitionId" value="@Model.CompetitionId" />
-                        <button type="submit"
-                                class="btn btn-outline-danger"
-                                onclick="return confirm('Réinitialiser les squads ?');">
-                            Réinitialiser
-                        </button>
-                    </form>
-
                     @if (Model.IsTraining)
                     {
                         <form method="post" asp-page-handler="CreateSquad" class="m-0">
