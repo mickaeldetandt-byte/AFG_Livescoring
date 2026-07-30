@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AFG_Livescoring.Pages.Competitions
 {
@@ -12,10 +13,14 @@ namespace AFG_Livescoring.Pages.Competitions
     public class CreateModel : PageModel
     {
         private readonly AppDbContext _db;
+        private readonly ILogger<CreateModel> _logger;
 
-        public CreateModel(AppDbContext db)
+        public CreateModel(
+            AppDbContext db,
+            ILogger<CreateModel>? logger = null)
         {
             _db = db;
+            _logger = logger ?? NullLogger<CreateModel>.Instance;
         }
 
         [BindProperty]
@@ -48,7 +53,10 @@ namespace AFG_Livescoring.Pages.Competitions
         {
             var currentUser = await GetCurrentUserAsync();
             if (!CanCreateCompetition(currentUser))
+            {
+                LogCreationRefused(currentUser, "RoleOrClubNotAllowed");
                 return Forbid();
+            }
 
             await LoadCoursesAsync();
             Input.Date = DateTime.Today;
@@ -62,7 +70,10 @@ namespace AFG_Livescoring.Pages.Competitions
         {
             var currentUser = await GetCurrentUserAsync();
             if (!CanCreateCompetition(currentUser))
+            {
+                LogCreationRefused(currentUser, "RoleOrClubNotAllowed");
                 return Forbid();
+            }
 
             if (string.IsNullOrWhiteSpace(Input.Name))
             {
@@ -108,6 +119,7 @@ namespace AFG_Livescoring.Pages.Competitions
 
             if (!ModelState.IsValid)
             {
+                LogCreationRefused(currentUser, "ValidationFailed");
                 await LoadCoursesAsync();
                 return Page();
             }
@@ -142,7 +154,28 @@ namespace AFG_Livescoring.Pages.Competitions
             _db.Competitions.Add(competition);
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
+            _logger.LogInformation(
+                "Competition operation {Operation} succeeded for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}",
+                "CreateDedicated",
+                competition.Id,
+                currentUser.Id,
+                currentUser.Role,
+                competition.ClubId);
             return RedirectToPage("/Competitions");
+        }
+
+        private void LogCreationRefused(AppUser? currentUser, string reason)
+        {
+            _logger.LogWarning(
+                "Competition operation {Operation} refused for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, Reason {Reason}",
+                "CreateDedicated",
+                null,
+                currentUser?.Id.ToString()
+                    ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? "anonymous",
+                currentUser?.Role ?? "unknown",
+                currentUser?.ClubId,
+                reason);
         }
 
         private async Task<AppUser?> GetCurrentUserAsync()

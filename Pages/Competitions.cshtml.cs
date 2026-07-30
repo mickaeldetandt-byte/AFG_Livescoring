@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
 using AFG_Livescoring.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AFG_Livescoring.Pages
 {
@@ -13,13 +14,16 @@ namespace AFG_Livescoring.Pages
     {
         private readonly AppDbContext _db;
         private readonly ICompetitionAuthorizationService _authorizationService;
+        private readonly ILogger<CompetitionsModel> _logger;
 
         public CompetitionsModel(
             AppDbContext db,
-            ICompetitionAuthorizationService authorizationService)
+            ICompetitionAuthorizationService authorizationService,
+            ILogger<CompetitionsModel>? logger = null)
         {
             _db = db;
             _authorizationService = authorizationService;
+            _logger = logger ?? NullLogger<CompetitionsModel>.Instance;
         }
 
         public List<Competition> Competitions { get; set; } = new();
@@ -161,10 +165,16 @@ namespace AFG_Livescoring.Pages
             LoadCourses();
 
             if (!User.Identity?.IsAuthenticated ?? true)
+            {
+                LogOperationRefused("CreateMain", null, null, "Unauthenticated");
                 return RedirectToPage("/Account/Login");
+            }
 
             if (!CanCreateCompetition())
+            {
+                LogOperationRefused("CreateMain", null, null, "RoleNotAllowed");
                 return Forbid();
+            }
 
             if (string.IsNullOrWhiteSpace(NewCompetition.Name))
             {
@@ -231,6 +241,11 @@ namespace AFG_Livescoring.Pages
 
             if (!ModelState.IsValid)
             {
+                LogOperationRefused(
+                    "CreateMain",
+                    null,
+                    currentUser?.ClubId,
+                    "ValidationFailed");
                 LoadCompetitionsAndStates();
                 return Page();
             }
@@ -238,27 +253,56 @@ namespace AFG_Livescoring.Pages
             _db.Competitions.Add(NewCompetition);
             _db.SaveChanges();
 
+            _logger.LogInformation(
+                "Competition operation {Operation} succeeded for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}",
+                "CreateMain",
+                NewCompetition.Id,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole(),
+                NewCompetition.ClubId);
             TempData["SuccessMessage"] = "Compétition créée avec succès.";
             return RedirectToPage();
         }
 
         public async Task<IActionResult> OnPostDeleteAsync(int id)
         {
+            _logger.LogInformation(
+                "Competition operation {Operation} attempted for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}",
+                "Delete",
+                id,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole());
+
             if (!User.Identity?.IsAuthenticated ?? true)
+            {
+                LogOperationRefused("Delete", id, null, "Unauthenticated");
                 return RedirectToPage("/Account/Login");
+            }
 
             var canManageCompetition = await _authorizationService
                 .CanManageCompetitionAsync(User, id, HttpContext.RequestAborted);
 
             if (!canManageCompetition)
             {
-                var competitionExists = await _db.Competitions
+                var competitionScope = await _db.Competitions
                     .AsNoTracking()
-                    .AnyAsync(
-                        competition => competition.Id == id,
+                    .Where(competition => competition.Id == id)
+                    .Select(competition => new { competition.ClubId })
+                    .SingleOrDefaultAsync(
                         HttpContext.RequestAborted);
 
-                return competitionExists ? Forbid() : RedirectToPage();
+                if (competitionScope != null)
+                {
+                    LogOperationRefused(
+                        "Delete",
+                        id,
+                        competitionScope.ClubId,
+                        "CrossClubAccess");
+                    return Forbid();
+                }
+
+                LogOperationRefused("Delete", id, null, "CompetitionNotFound");
+                return RedirectToPage();
             }
 
             var comp = await _db.Competitions
@@ -310,6 +354,11 @@ namespace AFG_Livescoring.Pages
                     || hasRecordedMatchPlayResult)
                 {
                     await transaction.RollbackAsync(HttpContext.RequestAborted);
+                    LogOperationRefused(
+                        "Delete",
+                        id,
+                        comp.ClubId,
+                        "SportsResultsExist");
                     TempData["ErrorMessage"] =
                         "Impossible de supprimer cette compétition car elle contient déjà des scores ou des résultats.";
                     return RedirectToPage();
@@ -375,15 +424,55 @@ namespace AFG_Livescoring.Pages
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
             await transaction.CommitAsync(HttpContext.RequestAborted);
 
+            _logger.LogInformation(
+                "Competition operation {Operation} succeeded for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}",
+                "Delete",
+                id,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole(),
+                comp.ClubId);
             TempData["SuccessMessage"] = "Compétition supprimée avec succès.";
             return RedirectToPage();
             }
-            catch
+            catch (Exception exception)
             {
                 await transaction.RollbackAsync(HttpContext.RequestAborted);
+                _logger.LogError(
+                    exception,
+                    "Competition operation {Operation} failed for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}",
+                    "Delete",
+                    id,
+                    GetCurrentUserIdentifier(),
+                    GetCurrentRole(),
+                    comp.ClubId);
                 throw;
             }
         }
+
+        private void LogOperationRefused(
+            string operation,
+            int? competitionId,
+            int? clubId,
+            string reason)
+        {
+            _logger.LogWarning(
+                "Competition operation {Operation} refused for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, Reason {Reason}",
+                operation,
+                competitionId,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole(),
+                clubId,
+                reason);
+        }
+
+        private string GetCurrentUserIdentifier() =>
+            User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.Identity?.Name
+            ?? "anonymous";
+
+        private string GetCurrentRole() =>
+            User.FindFirstValue(ClaimTypes.Role)
+            ?? "unknown";
 
         private bool CanCreateCompetition()
         {

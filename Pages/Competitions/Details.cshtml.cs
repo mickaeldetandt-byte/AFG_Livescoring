@@ -1,9 +1,11 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
 using AFG_Livescoring.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AFG_Livescoring.Pages.Competitions
 {
@@ -12,13 +14,16 @@ namespace AFG_Livescoring.Pages.Competitions
     {
         private readonly AppDbContext _db;
         private readonly ICompetitionAuthorizationService _authorizationService;
+        private readonly ILogger<DetailsModel> _logger;
 
         public DetailsModel(
             AppDbContext db,
-            ICompetitionAuthorizationService authorizationService)
+            ICompetitionAuthorizationService authorizationService,
+            ILogger<DetailsModel>? logger = null)
         {
             _db = db;
             _authorizationService = authorizationService;
+            _logger = logger ?? NullLogger<DetailsModel>.Instance;
         }
 
         [BindProperty(SupportsGet = true)]
@@ -51,7 +56,9 @@ namespace AFG_Livescoring.Pages.Competitions
 
         public async Task<IActionResult> OnGetAsync()
         {
-            var authorizationFailure = await GetAuthorizationFailureAsync(Id);
+            var authorizationFailure = await GetAuthorizationFailureAsync(
+                Id,
+                "ViewDetails");
             if (authorizationFailure != null)
                 return authorizationFailure;
 
@@ -63,7 +70,9 @@ namespace AFG_Livescoring.Pages.Competitions
 
         public async Task<IActionResult> OnPostStartAsync(int id)
         {
-            var authorizationFailure = await GetAuthorizationFailureAsync(id);
+            var authorizationFailure = await GetAuthorizationFailureAsync(
+                id,
+                "Start");
             if (authorizationFailure != null)
                 return authorizationFailure;
 
@@ -77,6 +86,11 @@ namespace AFG_Livescoring.Pages.Competitions
 
             if (competition.Status != CompetitionStatus.Draft)
             {
+                LogStatusTransitionRefused(
+                    "Start",
+                    competition,
+                    CompetitionStatus.InProgress,
+                    "InvalidCurrentStatus");
                 TempData["Error"] =
                     "Seule une compétition en brouillon peut être démarrée.";
                 return RedirectToPage(new { id });
@@ -84,21 +98,51 @@ namespace AFG_Livescoring.Pages.Competitions
 
             if (!await HasMinimumStartStructureAsync(competition))
             {
+                LogStatusTransitionRefused(
+                    "Start",
+                    competition,
+                    CompetitionStatus.InProgress,
+                    "IncompleteStructure");
                 TempData["Error"] =
                     "Impossible de démarrer : la structure et les participants de la compétition sont incomplets.";
                 return RedirectToPage(new { id });
             }
 
+            var previousStatus = competition.Status;
             competition.Status = CompetitionStatus.InProgress;
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            try
+            {
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(
+                    exception,
+                    "Competition operation {Operation} failed for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, OldStatus {OldStatus}, NewStatus {NewStatus}",
+                    "Start",
+                    competition.Id,
+                    GetCurrentUserIdentifier(),
+                    GetCurrentRole(),
+                    competition.ClubId,
+                    previousStatus,
+                    CompetitionStatus.InProgress);
+                throw;
+            }
 
+            LogStatusTransitionSucceeded(
+                "Start",
+                competition,
+                previousStatus,
+                CompetitionStatus.InProgress);
             TempData["SuccessMessage"] = "Compétition démarrée.";
             return RedirectToPage(new { id });
         }
 
         public async Task<IActionResult> OnPostFinishAsync(int id)
         {
-            var authorizationFailure = await GetAuthorizationFailureAsync(id);
+            var authorizationFailure = await GetAuthorizationFailureAsync(
+                id,
+                "Finish");
             if (authorizationFailure != null)
                 return authorizationFailure;
 
@@ -112,19 +156,49 @@ namespace AFG_Livescoring.Pages.Competitions
 
             if (competition.Status != CompetitionStatus.InProgress)
             {
+                LogStatusTransitionRefused(
+                    "Finish",
+                    competition,
+                    CompetitionStatus.Finished,
+                    "InvalidCurrentStatus");
                 TempData["Error"] =
                     "Seule une compétition en cours peut être terminée.";
                 return RedirectToPage(new { id });
             }
 
+            var previousStatus = competition.Status;
             competition.Status = CompetitionStatus.Finished;
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            try
+            {
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(
+                    exception,
+                    "Competition operation {Operation} failed for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, OldStatus {OldStatus}, NewStatus {NewStatus}",
+                    "Finish",
+                    competition.Id,
+                    GetCurrentUserIdentifier(),
+                    GetCurrentRole(),
+                    competition.ClubId,
+                    previousStatus,
+                    CompetitionStatus.Finished);
+                throw;
+            }
 
+            LogStatusTransitionSucceeded(
+                "Finish",
+                competition,
+                previousStatus,
+                CompetitionStatus.Finished);
             TempData["SuccessMessage"] = "Compétition terminée avec succès.";
             return RedirectToPage(new { id });
         }
 
-        private async Task<IActionResult?> GetAuthorizationFailureAsync(int competitionId)
+        private async Task<IActionResult?> GetAuthorizationFailureAsync(
+            int competitionId,
+            string operation)
         {
             var canManageCompetition = await _authorizationService
                 .CanManageCompetitionAsync(
@@ -135,14 +209,72 @@ namespace AFG_Livescoring.Pages.Competitions
             if (canManageCompetition)
                 return null;
 
-            var competitionExists = await _db.Competitions
+            var competitionScope = await _db.Competitions
                 .AsNoTracking()
-                .AnyAsync(
-                    competition => competition.Id == competitionId,
+                .Where(competition => competition.Id == competitionId)
+                .Select(competition => new { competition.ClubId })
+                .SingleOrDefaultAsync(
                     HttpContext.RequestAborted);
 
-            return competitionExists ? Forbid() : NotFound();
+            if (competitionScope != null)
+            {
+                _logger.LogWarning(
+                    "Competition operation {Operation} refused for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, Reason {Reason}",
+                    operation,
+                    competitionId,
+                    GetCurrentUserIdentifier(),
+                    GetCurrentRole(),
+                    competitionScope.ClubId,
+                    "CrossClubAccess");
+                return Forbid();
+            }
+
+            return NotFound();
         }
+
+        private void LogStatusTransitionSucceeded(
+            string operation,
+            Competition competition,
+            CompetitionStatus oldStatus,
+            CompetitionStatus newStatus)
+        {
+            _logger.LogInformation(
+                "Competition operation {Operation} succeeded for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, OldStatus {OldStatus}, NewStatus {NewStatus}",
+                operation,
+                competition.Id,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole(),
+                competition.ClubId,
+                oldStatus,
+                newStatus);
+        }
+
+        private void LogStatusTransitionRefused(
+            string operation,
+            Competition competition,
+            CompetitionStatus requestedStatus,
+            string reason)
+        {
+            _logger.LogWarning(
+                "Competition operation {Operation} refused for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, OldStatus {OldStatus}, NewStatus {NewStatus}, Reason {Reason}",
+                operation,
+                competition.Id,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole(),
+                competition.ClubId,
+                competition.Status,
+                requestedStatus,
+                reason);
+        }
+
+        private string GetCurrentUserIdentifier() =>
+            User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? User.Identity?.Name
+            ?? "anonymous";
+
+        private string GetCurrentRole() =>
+            User.FindFirstValue(System.Security.Claims.ClaimTypes.Role)
+            ?? "unknown";
 
         private async Task<bool> LoadPageDataAsync()
         {

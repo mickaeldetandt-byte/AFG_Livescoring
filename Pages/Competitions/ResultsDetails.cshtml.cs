@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -6,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using ClosedXML.Excel;
 using AFG_Livescoring.Models;
 using AFG_Livescoring.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AFG_Livescoring.Pages.Competitions
 {
@@ -14,13 +16,16 @@ namespace AFG_Livescoring.Pages.Competitions
     {
         private readonly AppDbContext _db;
         private readonly ICompetitionAuthorizationService _authorizationService;
+        private readonly ILogger<ResultsDetailsModel> _logger;
 
         public ResultsDetailsModel(
             AppDbContext db,
-            ICompetitionAuthorizationService authorizationService)
+            ICompetitionAuthorizationService authorizationService,
+            ILogger<ResultsDetailsModel>? logger = null)
         {
             _db = db;
             _authorizationService = authorizationService;
+            _logger = logger ?? NullLogger<ResultsDetailsModel>.Instance;
         }
 
         [BindProperty(SupportsGet = true)]
@@ -51,7 +56,7 @@ namespace AFG_Livescoring.Pages.Competitions
 
         public async Task<IActionResult> OnGetAsync()
         {
-            var authorizationResult = await AuthorizeCompetitionAsync();
+            var authorizationResult = await AuthorizeCompetitionAsync("ViewResults");
             if (authorizationResult != null)
                 return authorizationResult;
 
@@ -64,7 +69,7 @@ namespace AFG_Livescoring.Pages.Competitions
 
         public async Task<IActionResult> OnGetExportExcelAsync()
         {
-            var authorizationResult = await AuthorizeCompetitionAsync();
+            var authorizationResult = await AuthorizeCompetitionAsync("ExportExcel");
             if (authorizationResult != null)
                 return authorizationResult;
 
@@ -165,6 +170,13 @@ namespace AFG_Livescoring.Pages.Competitions
 
             var fileName = $"resultats_competition_{Competition.Id}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
 
+            _logger.LogInformation(
+                "Competition operation {Operation} succeeded for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}",
+                "ExportExcel",
+                Competition.Id,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole(),
+                Competition.ClubId);
             return File(
                 stream.ToArray(),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -172,7 +184,7 @@ namespace AFG_Livescoring.Pages.Competitions
             );
         }
 
-        private async Task<IActionResult?> AuthorizeCompetitionAsync()
+        private async Task<IActionResult?> AuthorizeCompetitionAsync(string operation)
         {
             if (await _authorizationService.CanManageCompetitionAsync(
                     User,
@@ -182,14 +194,35 @@ namespace AFG_Livescoring.Pages.Competitions
                 return null;
             }
 
-            var competitionExists = await _db.Competitions
+            var competition = await _db.Competitions
                 .AsNoTracking()
-                .AnyAsync(
-                    competition => competition.Id == CompetitionId,
+                .Where(competition => competition.Id == CompetitionId)
+                .Select(competition => new { competition.ClubId })
+                .SingleOrDefaultAsync(
                     HttpContext.RequestAborted);
 
-            return competitionExists ? Forbid() : NotFound();
+            if (competition == null)
+                return NotFound();
+
+            _logger.LogWarning(
+                "Competition operation {Operation} refused for CompetitionId {CompetitionId} by UserId {UserId}, Role {Role}, ClubId {ClubId}, Reason {Reason}",
+                operation,
+                CompetitionId,
+                GetCurrentUserIdentifier(),
+                GetCurrentRole(),
+                competition.ClubId,
+                "CrossClubAccess");
+            return Forbid();
         }
+
+        private string GetCurrentUserIdentifier() =>
+            User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? User.Identity?.Name
+            ?? "anonymous";
+
+        private string GetCurrentRole() =>
+            User.FindFirstValue(System.Security.Claims.ClaimTypes.Role)
+            ?? "unknown";
 
         private async Task<bool> LoadResultsAsync()
         {
