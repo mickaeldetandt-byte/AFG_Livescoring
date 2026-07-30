@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using ClosedXML.Excel;
 using AFG_Livescoring.Models;
+using AFG_Livescoring.Services;
 
 namespace AFG_Livescoring.Pages.Competitions
 {
@@ -12,10 +13,14 @@ namespace AFG_Livescoring.Pages.Competitions
     public class ResultsDetailsModel : PageModel
     {
         private readonly AppDbContext _db;
+        private readonly ICompetitionAuthorizationService _authorizationService;
 
-        public ResultsDetailsModel(AppDbContext db)
+        public ResultsDetailsModel(
+            AppDbContext db,
+            ICompetitionAuthorizationService authorizationService)
         {
             _db = db;
+            _authorizationService = authorizationService;
         }
 
         [BindProperty(SupportsGet = true)]
@@ -46,6 +51,10 @@ namespace AFG_Livescoring.Pages.Competitions
 
         public async Task<IActionResult> OnGetAsync()
         {
+            var authorizationResult = await AuthorizeCompetitionAsync();
+            if (authorizationResult != null)
+                return authorizationResult;
+
             var ok = await LoadResultsAsync();
             if (!ok)
                 return NotFound();
@@ -55,6 +64,10 @@ namespace AFG_Livescoring.Pages.Competitions
 
         public async Task<IActionResult> OnGetExportExcelAsync()
         {
+            var authorizationResult = await AuthorizeCompetitionAsync();
+            if (authorizationResult != null)
+                return authorizationResult;
+
             var ok = await LoadResultsAsync();
             if (!ok || Competition == null)
                 return NotFound();
@@ -157,6 +170,25 @@ namespace AFG_Livescoring.Pages.Competitions
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 fileName
             );
+        }
+
+        private async Task<IActionResult?> AuthorizeCompetitionAsync()
+        {
+            if (await _authorizationService.CanManageCompetitionAsync(
+                    User,
+                    CompetitionId,
+                    HttpContext.RequestAborted))
+            {
+                return null;
+            }
+
+            var competitionExists = await _db.Competitions
+                .AsNoTracking()
+                .AnyAsync(
+                    competition => competition.Id == CompetitionId,
+                    HttpContext.RequestAborted);
+
+            return competitionExists ? Forbid() : NotFound();
         }
 
         private async Task<bool> LoadResultsAsync()
