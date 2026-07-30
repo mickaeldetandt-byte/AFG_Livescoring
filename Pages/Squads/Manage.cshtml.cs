@@ -265,16 +265,27 @@ namespace AFG_Livescoring.Pages.Squads
             return RedirectToPage(new { competitionId });
         }
 
-        public IActionResult OnPostSaveTeams(int competitionId, int squadId, int team1p1, int team1p2, int team2p1, int team2p2)
+        public async Task<IActionResult> OnPostSaveTeamsAsync(
+            int competitionId,
+            int squadId,
+            int team1p1,
+            int team1p2,
+            int team2p1,
+            int team2p2)
         {
             this.competitionId = competitionId;
 
-            var comp = _db.Competitions
-                .AsNoTracking()
-                .FirstOrDefault(c => c.Id == competitionId);
+            if (!await _authorizationService.CanManageCompetitionAsync(
+                    User,
+                    competitionId,
+                    HttpContext.RequestAborted))
+            {
+                return Forbid();
+            }
 
-            if (comp == null)
-                return RedirectToPage("/Competitions");
+            var comp = await _db.Competitions
+                .AsNoTracking()
+                .FirstAsync(c => c.Id == competitionId, HttpContext.RequestAborted);
 
             if (!IsDoublesMatchPlayType(comp.CompetitionType)
                 && comp.CompetitionType != CompetitionType.DoublesScramble
@@ -285,21 +296,39 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
+            var squad = await _db.Squads
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    s => s.Id == squadId && s.CompetitionId == competitionId,
+                    HttpContext.RequestAborted);
+
+            if (squad == null)
+            {
+                TempData["Message"] = "Squad introuvable.";
+                return RedirectToPage(new { competitionId });
+            }
+
             if (CompetitionHasScores(competitionId))
             {
                 TempData["Message"] = "Impossible de modifier les équipes : des scores existent déjà.";
                 return RedirectToPage(new { competitionId });
             }
 
-            var squadRounds = _db.Rounds
+            var squadRounds = await _db.Rounds
                 .Include(r => r.Player)
                 .Where(r => r.CompetitionId == competitionId && r.SquadId == squadId)
                 .OrderBy(r => r.Id)
-                .ToList();
+                .ToListAsync(HttpContext.RequestAborted);
 
             if (squadRounds.Count != 4)
             {
                 TempData["Message"] = "Il faut exactement 4 joueurs dans le squad pour composer 2 équipes.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            if (squadRounds.Any(r => r.Player == null))
+            {
+                TempData["Message"] = "Un joueur du squad est introuvable.";
                 return RedirectToPage(new { competitionId });
             }
 
@@ -319,107 +348,130 @@ namespace AFG_Livescoring.Pages.Squads
                 return RedirectToPage(new { competitionId });
             }
 
-            var existingMatches = _db.MatchPlayRounds
+            var existingMatches = await _db.MatchPlayRounds
                 .Where(m => m.CompetitionId == competitionId && m.SquadId == squadId)
-                .ToList();
+                .ToListAsync(HttpContext.RequestAborted);
 
-            if (existingMatches.Any())
-            {
-                var matchIds = existingMatches.Select(m => m.Id).ToList();
+            var matchIds = existingMatches.Select(m => m.Id).ToList();
+            var holeResults = await _db.MatchPlayHoleResults
+                .Where(h => matchIds.Contains(h.MatchPlayRoundId))
+                .ToListAsync(HttpContext.RequestAborted);
 
-                var holeResults = _db.MatchPlayHoleResults
-                    .Where(h => matchIds.Contains(h.MatchPlayRoundId))
-                    .ToList();
-
-                if (holeResults.Any())
-                    _db.MatchPlayHoleResults.RemoveRange(holeResults);
-
-                _db.MatchPlayRounds.RemoveRange(existingMatches);
-                _db.SaveChanges();
-            }
-
-            var existingTeams = _db.Teams
-                .Include(t => t.TeamPlayers)
+            var existingTeams = await _db.Teams
                 .Where(t => t.CompetitionId == competitionId && t.SquadId == squadId)
-                .ToList();
+                .ToListAsync(HttpContext.RequestAborted);
 
-            if (existingTeams.Any())
+            var existingTeamIds = existingTeams.Select(t => t.Id).ToList();
+
+            var hasOutOfScopeTeamRounds = await _db.TeamRounds.AnyAsync(
+                tr => existingTeamIds.Contains(tr.TeamId)
+                      && (tr.CompetitionId != competitionId || tr.SquadId != squadId),
+                HttpContext.RequestAborted);
+
+            if (hasOutOfScopeTeamRounds)
             {
-                var existingTeamIds = existingTeams.Select(t => t.Id).ToList();
-
-                var existingTeamScores = _db.TeamScores
-                    .Include(ts => ts.TeamRound)
-                    .Where(ts => ts.TeamRound != null && existingTeamIds.Contains(ts.TeamRound.TeamId))
-                    .ToList();
-
-                if (existingTeamScores.Any())
-                    _db.TeamScores.RemoveRange(existingTeamScores);
-
-                var existingTeamRounds = _db.TeamRounds
-                    .Where(tr => existingTeamIds.Contains(tr.TeamId))
-                    .ToList();
-
-                if (existingTeamRounds.Any())
-                    _db.TeamRounds.RemoveRange(existingTeamRounds);
-
-                var existingTeamPlayers = _db.TeamPlayers
-                    .Where(tp => existingTeamIds.Contains(tp.TeamId))
-                    .ToList();
-
-                if (existingTeamPlayers.Any())
-                    _db.TeamPlayers.RemoveRange(existingTeamPlayers);
-
-                _db.Teams.RemoveRange(existingTeams);
-                _db.SaveChanges();
+                TempData["Message"] = "La structure des équipes est incohérente.";
+                return RedirectToPage(new { competitionId });
             }
+
+            var existingTeamRounds = await _db.TeamRounds
+                .Where(tr => existingTeamIds.Contains(tr.TeamId)
+                             && tr.CompetitionId == competitionId
+                             && tr.SquadId == squadId)
+                .ToListAsync(HttpContext.RequestAborted);
+
+            var existingTeamRoundIds = existingTeamRounds.Select(tr => tr.Id).ToList();
+            var existingTeamScores = await _db.TeamScores
+                .Where(ts => existingTeamRoundIds.Contains(ts.TeamRoundId))
+                .ToListAsync(HttpContext.RequestAborted);
+
+            if (existingTeamScores.Any())
+            {
+                TempData["Message"] = "Impossible de modifier les équipes : des scores existent déjà.";
+                return RedirectToPage(new { competitionId });
+            }
+
+            var existingTeamPlayers = await _db.TeamPlayers
+                .Where(tp => existingTeamIds.Contains(tp.TeamId))
+                .ToListAsync(HttpContext.RequestAborted);
 
             string team1Name = BuildTeamName(squadRounds, team1p1, team1p2);
             string team2Name = BuildTeamName(squadRounds, team2p1, team2p2);
 
-            var teamA = new Team
+            await using var transaction = await _db.Database.BeginTransactionAsync(
+                HttpContext.RequestAborted);
+
+            try
             {
-                CompetitionId = competitionId,
-                SquadId = squadId,
-                Name = team1Name,
-                IsActive = true
-            };
+                if (holeResults.Any())
+                    _db.MatchPlayHoleResults.RemoveRange(holeResults);
 
-            var teamB = new Team
+                if (existingMatches.Any())
+                    _db.MatchPlayRounds.RemoveRange(existingMatches);
+
+                if (existingTeamScores.Any())
+                    _db.TeamScores.RemoveRange(existingTeamScores);
+
+                if (existingTeamRounds.Any())
+                    _db.TeamRounds.RemoveRange(existingTeamRounds);
+
+                if (existingTeamPlayers.Any())
+                    _db.TeamPlayers.RemoveRange(existingTeamPlayers);
+
+                if (existingTeams.Any())
+                    _db.Teams.RemoveRange(existingTeams);
+
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+                var teamA = new Team
+                {
+                    CompetitionId = competitionId,
+                    SquadId = squadId,
+                    Name = team1Name,
+                    IsActive = true
+                };
+
+                var teamB = new Team
+                {
+                    CompetitionId = competitionId,
+                    SquadId = squadId,
+                    Name = team2Name,
+                    IsActive = true
+                };
+
+                _db.Teams.Add(teamA);
+                _db.Teams.Add(teamB);
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+                _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamA.Id, PlayerId = team1p1, Order = 1 });
+                _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamA.Id, PlayerId = team1p2, Order = 2 });
+                _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamB.Id, PlayerId = team2p1, Order = 1 });
+                _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamB.Id, PlayerId = team2p2, Order = 2 });
+
+                _db.TeamRounds.Add(new TeamRound
+                {
+                    CompetitionId = competitionId,
+                    TeamId = teamA.Id,
+                    SquadId = squadId,
+                    IsLocked = false
+                });
+
+                _db.TeamRounds.Add(new TeamRound
+                {
+                    CompetitionId = competitionId,
+                    TeamId = teamB.Id,
+                    SquadId = squadId,
+                    IsLocked = false
+                });
+
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
+                await transaction.CommitAsync(HttpContext.RequestAborted);
+            }
+            catch
             {
-                CompetitionId = competitionId,
-                SquadId = squadId,
-                Name = team2Name,
-                IsActive = true
-            };
-
-            _db.Teams.Add(teamA);
-            _db.Teams.Add(teamB);
-            _db.SaveChanges();
-
-            _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamA.Id, PlayerId = team1p1, Order = 1 });
-            _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamA.Id, PlayerId = team1p2, Order = 2 });
-            _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamB.Id, PlayerId = team2p1, Order = 1 });
-            _db.TeamPlayers.Add(new TeamPlayer { TeamId = teamB.Id, PlayerId = team2p2, Order = 2 });
-
-            _db.SaveChanges();
-
-            _db.TeamRounds.Add(new TeamRound
-            {
-                CompetitionId = competitionId,
-                TeamId = teamA.Id,
-                SquadId = squadId,
-                IsLocked = false
-            });
-
-            _db.TeamRounds.Add(new TeamRound
-            {
-                CompetitionId = competitionId,
-                TeamId = teamB.Id,
-                SquadId = squadId,
-                IsLocked = false
-            });
-
-            _db.SaveChanges();
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
+            }
 
             TempData["Message"] = "Équipes enregistrées avec succès.";
             return RedirectToPage(new { competitionId });
