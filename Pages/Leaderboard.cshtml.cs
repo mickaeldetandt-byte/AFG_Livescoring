@@ -102,17 +102,35 @@ namespace AFG_Livescoring.Pages
 
         public IActionResult OnGet()
         {
-            Competition = _db.Competitions
-                .Include(c => c.Course)
-                .AsNoTracking()
-                .FirstOrDefault(c => c.Id == CompetitionId);
+            if (User.Identity?.IsAuthenticated != true)
+            {
+                Competition = _db.Competitions
+                    .AsNoTracking()
+                    .Include(c => c.Course)
+                    .FirstOrDefault(c =>
+                        c.Id == CompetitionId
+                        && c.Visibility == CompetitionVisibility.Public
+                        && c.IsActive
+                        && (c.Status == CompetitionStatus.InProgress
+                            || c.Status == CompetitionStatus.Finished));
 
-            if (Competition == null)
-                return RedirectToPage("/Competitions");
+                if (Competition == null)
+                    return NotFound();
+            }
+            else
+            {
+                Competition = _db.Competitions
+                    .AsNoTracking()
+                    .Include(c => c.Course)
+                    .FirstOrDefault(c => c.Id == CompetitionId);
 
-            var accessResult = GetCompetitionAccessResult(Competition);
-            if (accessResult != null)
-                return accessResult;
+                if (Competition == null)
+                    return RedirectToPage("/Competitions");
+
+                var accessResult = GetCompetitionAccessResult(Competition);
+                if (accessResult != null)
+                    return accessResult;
+            }
 
             UserCanManageCompetition = CanManageCompetition(Competition);
 
