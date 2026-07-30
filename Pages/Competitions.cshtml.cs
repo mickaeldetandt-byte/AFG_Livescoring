@@ -7,7 +7,7 @@ using AFG_Livescoring.Models;
 
 namespace AFG_Livescoring.Pages
 {
-    [Authorize]
+    [Authorize(Roles = "Admin,Club")]
     public class CompetitionsModel : PageModel
     {
         private readonly AppDbContext _db;
@@ -37,8 +37,12 @@ namespace AFG_Livescoring.Pages
 
         public IActionResult OnGet()
         {
+            var scope = GetCompetitionListScope();
+            if (scope == null)
+                return Forbid();
+
             LoadCourses();
-            LoadCompetitionsAndStates();
+            LoadCompetitionsAndStates(scope);
 
             NewCompetition.Date = DateTime.Today;
             NewCompetition.ScoringMode = ScoringMode.SquadOnly;
@@ -60,12 +64,29 @@ namespace AFG_Livescoring.Pages
                 .ToList();
         }
 
-        private void LoadCompetitionsAndStates()
+        private void LoadCompetitionsAndStates(CompetitionListScope? authorizedScope = null)
         {
-            Competitions = _db.Competitions
+            var scope = authorizedScope ?? GetCompetitionListScope();
+            if (scope == null)
+            {
+                Competitions = new List<Competition>();
+                CompetitionStates = new Dictionary<int, CompetitionStateInfo>();
+                return;
+            }
+
+            var competitionsQuery = _db.Competitions
+                .AsNoTracking()
+                .AsQueryable();
+
+            if (!scope.IsAdmin)
+            {
+                competitionsQuery = competitionsQuery
+                    .Where(competition => competition.ClubId == scope.ClubId);
+            }
+
+            Competitions = competitionsQuery
                 .Include(c => c.Course)
                 .Include(c => c.Club)
-                .AsNoTracking()
                 .OrderByDescending(c => c.Date)
                 .ThenBy(c => c.Name)
                 .ToList();
@@ -126,6 +147,43 @@ namespace AFG_Livescoring.Pages
                 };
             }
         }
+
+        private CompetitionListScope? GetCompetitionListScope()
+        {
+            if (User.Identity?.IsAuthenticated != true
+                || !int.TryParse(
+                    User.FindFirstValue(ClaimTypes.NameIdentifier),
+                    out var userId))
+            {
+                return null;
+            }
+
+            var currentUser = _db.AppUsers
+                .AsNoTracking()
+                .Where(user => user.Id == userId)
+                .Select(user => new
+                {
+                    user.Role,
+                    user.ClubId
+                })
+                .SingleOrDefault();
+
+            if (currentUser == null)
+                return null;
+
+            if (string.Equals(currentUser.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+                return new CompetitionListScope(true, null);
+
+            if (string.Equals(currentUser.Role, "Club", StringComparison.OrdinalIgnoreCase)
+                && currentUser.ClubId.HasValue)
+            {
+                return new CompetitionListScope(false, currentUser.ClubId.Value);
+            }
+
+            return null;
+        }
+
+        private sealed record CompetitionListScope(bool IsAdmin, int? ClubId);
 
         public IActionResult OnPostAdd()
         {
