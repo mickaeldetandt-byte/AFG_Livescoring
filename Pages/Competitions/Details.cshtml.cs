@@ -1,9 +1,9 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
+using AFG_Livescoring.Services;
 
 namespace AFG_Livescoring.Pages.Competitions
 {
@@ -11,10 +11,14 @@ namespace AFG_Livescoring.Pages.Competitions
     public class DetailsModel : PageModel
     {
         private readonly AppDbContext _db;
+        private readonly ICompetitionAuthorizationService _authorizationService;
 
-        public DetailsModel(AppDbContext db)
+        public DetailsModel(
+            AppDbContext db,
+            ICompetitionAuthorizationService authorizationService)
         {
             _db = db;
+            _authorizationService = authorizationService;
         }
 
         [BindProperty(SupportsGet = true)]
@@ -44,127 +48,152 @@ namespace AFG_Livescoring.Pages.Competitions
         public bool ShowParticipantsButton => CanManage;
         public bool ShowLiveButton => Competition?.Status == CompetitionStatus.InProgress;
 
-        public IActionResult OnGet()
+        public async Task<IActionResult> OnGetAsync()
         {
-            if (!LoadPageData())
-                return RedirectToPage("/Competitions");
+            var authorizationFailure = await GetAuthorizationFailureAsync(Id);
+            if (authorizationFailure != null)
+                return authorizationFailure;
+
+            if (!await LoadPageDataAsync())
+                return NotFound();
 
             return Page();
         }
 
-        public IActionResult OnPostStart(int id)
+        public async Task<IActionResult> OnPostStartAsync(int id)
         {
-            var competition = _db.Competitions.FirstOrDefault(c => c.Id == id);
+            var authorizationFailure = await GetAuthorizationFailureAsync(id);
+            if (authorizationFailure != null)
+                return authorizationFailure;
+
+            var competition = await _db.Competitions
+                .SingleOrDefaultAsync(
+                    item => item.Id == id,
+                    HttpContext.RequestAborted);
+
             if (competition == null)
-            {
-                TempData["Error"] = "Compétition introuvable.";
-                return RedirectToPage("/Competitions");
-            }
+                return NotFound();
 
-            if (!CanManageCompetition(competition))
-                return Forbid();
-
-            if (competition.Status == CompetitionStatus.Finished)
+            if (competition.Status != CompetitionStatus.Draft)
             {
-                TempData["Error"] = "Cette compétition est déjà terminée.";
+                TempData["Error"] =
+                    "Seule une compétition en brouillon peut être démarrée.";
                 return RedirectToPage(new { id });
             }
 
-            var hasPlayers = _db.Rounds.Any(r => r.CompetitionId == id)
-                || _db.TeamRounds.Any(tr => tr.CompetitionId == id)
-                || _db.MatchPlayRounds.Any(m => m.CompetitionId == id);
-
-            if (!hasPlayers)
+            if (!await HasMinimumStartStructureAsync(competition))
             {
-                TempData["Error"] = "Impossible de démarrer : aucun participant n'est encore affecté à cette compétition.";
+                TempData["Error"] =
+                    "Impossible de démarrer : la structure et les participants de la compétition sont incomplets.";
                 return RedirectToPage(new { id });
             }
 
             competition.Status = CompetitionStatus.InProgress;
-            _db.SaveChanges();
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
             TempData["SuccessMessage"] = "Compétition démarrée.";
             return RedirectToPage(new { id });
         }
 
-        public IActionResult OnPostFinish(int id)
+        public async Task<IActionResult> OnPostFinishAsync(int id)
         {
-            var competition = _db.Competitions.FirstOrDefault(c => c.Id == id);
+            var authorizationFailure = await GetAuthorizationFailureAsync(id);
+            if (authorizationFailure != null)
+                return authorizationFailure;
+
+            var competition = await _db.Competitions
+                .SingleOrDefaultAsync(
+                    item => item.Id == id,
+                    HttpContext.RequestAborted);
+
             if (competition == null)
-            {
-                TempData["Error"] = "Compétition introuvable.";
-                return RedirectToPage("/Competitions");
-            }
+                return NotFound();
 
-            if (!CanManageCompetition(competition))
-                return Forbid();
-
-            if (competition.Status == CompetitionStatus.Finished)
+            if (competition.Status != CompetitionStatus.InProgress)
             {
-                TempData["Info"] = "La compétition est déjà terminée.";
+                TempData["Error"] =
+                    "Seule une compétition en cours peut être terminée.";
                 return RedirectToPage(new { id });
             }
 
             competition.Status = CompetitionStatus.Finished;
-            _db.SaveChanges();
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
             TempData["SuccessMessage"] = "Compétition terminée avec succès.";
             return RedirectToPage(new { id });
         }
 
-        private bool LoadPageData()
+        private async Task<IActionResult?> GetAuthorizationFailureAsync(int competitionId)
         {
-            Competition = _db.Competitions
+            var canManageCompetition = await _authorizationService
+                .CanManageCompetitionAsync(
+                    User,
+                    competitionId,
+                    HttpContext.RequestAborted);
+
+            if (canManageCompetition)
+                return null;
+
+            var competitionExists = await _db.Competitions
+                .AsNoTracking()
+                .AnyAsync(
+                    competition => competition.Id == competitionId,
+                    HttpContext.RequestAborted);
+
+            return competitionExists ? Forbid() : NotFound();
+        }
+
+        private async Task<bool> LoadPageDataAsync()
+        {
+            Competition = await _db.Competitions
                 .Include(c => c.Course)
                 .Include(c => c.Club)
                 .Include(c => c.CreatedByUser)
                 .AsNoTracking()
-                .FirstOrDefault(c => c.Id == Id);
+                .FirstOrDefaultAsync(
+                    c => c.Id == Id,
+                    HttpContext.RequestAborted);
 
             if (Competition == null)
                 return false;
 
-            if (!CanManageCompetition(Competition))
-                throw new UnauthorizedAccessException();
-
-            var rounds = _db.Rounds
+            var rounds = await _db.Rounds
                 .AsNoTracking()
                 .Where(r => r.CompetitionId == Id)
-                .ToList();
+                .ToListAsync(HttpContext.RequestAborted);
 
             var roundIds = rounds.Select(r => r.Id).ToList();
 
             var scores = roundIds.Any()
-                ? _db.Scores
+                ? await _db.Scores
                     .AsNoTracking()
                     .Where(s => roundIds.Contains(s.RoundId) && s.Strokes > 0)
-                    .ToList()
+                    .ToListAsync(HttpContext.RequestAborted)
                 : new List<Score>();
 
-            var squads = _db.Squads
+            var squads = await _db.Squads
                 .AsNoTracking()
                 .Where(s => s.CompetitionId == Id)
-                .ToList();
-
-            _ = _db.TeamRounds.AsNoTracking().Count(tr => tr.CompetitionId == Id);
-            _ = _db.MatchPlayRounds.AsNoTracking().Count(m => m.CompetitionId == Id);
+                .ToListAsync(HttpContext.RequestAborted);
 
             PlayerCount = rounds.Count;
             SquadCount = squads.Count;
 
             HasStarted = scores.Any()
-                         || _db.TeamScores.AsNoTracking()
+                         || await _db.TeamScores.AsNoTracking()
                              .Join(_db.TeamRounds.AsNoTracking().Where(tr => tr.CompetitionId == Id),
                                    s => s.TeamRoundId,
                                    tr => tr.Id,
                                    (s, tr) => s)
-                             .Any(ts => ts.Strokes > 0)
-                         || _db.MatchPlayHoleResults.AsNoTracking()
+                             .AnyAsync(
+                                 ts => ts.Strokes > 0,
+                                 HttpContext.RequestAborted)
+                         || await _db.MatchPlayHoleResults.AsNoTracking()
                              .Join(_db.MatchPlayRounds.AsNoTracking().Where(m => m.CompetitionId == Id),
                                    h => h.MatchPlayRoundId,
                                    m => m.Id,
                                    (h, m) => h)
-                             .Any();
+                             .AnyAsync(HttpContext.RequestAborted);
 
             var holesPlayedByRoundId = scores
                 .GroupBy(s => s.RoundId)
@@ -196,34 +225,73 @@ namespace AFG_Livescoring.Pages.Competitions
             return true;
         }
 
-        private bool CanManageCompetition(Competition competition)
+        private async Task<bool> HasMinimumStartStructureAsync(Competition competition)
         {
-            if (User.Identity?.IsAuthenticated != true)
+            var rounds = await _db.Rounds
+                .AsNoTracking()
+                .Where(round => round.CompetitionId == competition.Id
+                                && round.SquadId.HasValue
+                                && round.Player != null)
+                .Select(round => new
+                {
+                    round.PlayerId,
+                    SquadId = round.SquadId!.Value
+                })
+                .ToListAsync(HttpContext.RequestAborted);
+
+            if (rounds.Count == 0)
                 return false;
 
-            var role = User.FindFirst(ClaimTypes.Role)?.Value;
-            var email = User.Identity?.Name;
+            var isDoubles = competition.CompetitionType is
+                CompetitionType.DoublesScramble
+                or CompetitionType.DoublesFourball
+                or CompetitionType.DoublesFoursome
+                or CompetitionType.MatchPlayFourball
+                or CompetitionType.MatchPlayFoursome
+                or CompetitionType.MatchPlayScramble;
 
-            if (string.IsNullOrWhiteSpace(role) || string.IsNullOrWhiteSpace(email))
-                return false;
-
-            if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            var currentUser = _db.AppUsers.FirstOrDefault(u => u.Email == email);
-            if (currentUser == null)
-                return false;
-
-            if (string.Equals(role, "Club", StringComparison.OrdinalIgnoreCase))
+            if (!isDoubles)
             {
-                if (competition.ClubId.HasValue && currentUser.ClubId == competition.ClubId)
-                    return true;
+                var minimumPlayers = competition.CompetitionType
+                    == CompetitionType.MatchPlayIndividual
+                    ? 2
+                    : 1;
 
-                if (competition.CreatedByUserId.HasValue && currentUser.Id == competition.CreatedByUserId.Value)
-                    return true;
+                return rounds
+                    .Select(round => round.PlayerId)
+                    .Distinct()
+                    .Count() >= minimumPlayers;
             }
 
-            return false;
+            var validTeams = await _db.Teams
+                .AsNoTracking()
+                .Where(team => team.CompetitionId == competition.Id
+                               && team.SquadId.HasValue
+                               && team.IsActive)
+                .Select(team => new
+                {
+                    team.Id,
+                    team.SquadId,
+                    PlayerIds = team.TeamPlayers
+                        .Select(teamPlayer => teamPlayer.PlayerId)
+                        .ToList(),
+                    HasTeamRound = team.TeamRounds.Any(
+                        teamRound => teamRound.CompetitionId == competition.Id
+                                     && teamRound.SquadId == team.SquadId)
+                })
+                .ToListAsync(HttpContext.RequestAborted);
+
+            return validTeams
+                .Where(team =>
+                    team.HasTeamRound
+                    && team.PlayerIds.Count == 2
+                    && team.PlayerIds.Distinct().Count() == 2
+                    && team.PlayerIds.All(playerId =>
+                        rounds.Any(round =>
+                            round.PlayerId == playerId
+                            && round.SquadId == team.SquadId)))
+                .GroupBy(team => team.SquadId)
+                .Any(group => group.Count() >= 2);
         }
 
         public string FormatStatus(CompetitionStatus status)
