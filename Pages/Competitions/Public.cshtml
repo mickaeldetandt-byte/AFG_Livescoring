@@ -44,9 +44,6 @@
                                 <div>
                                     @switch (comp.Status)
                                     {
-                                        case CompetitionStatus.Draft:
-                                            <span class="badge bg-secondary">@Model.FormatStatus(comp.Status)</span>
-                                            break;
                                         case CompetitionStatus.InProgress:
                                             <span class="badge bg-warning text-dark">@Model.FormatStatus(comp.Status)</span>
                                             break;
@@ -103,15 +100,6 @@
                                    class="btn btn-outline-info">
                                     Club House
                                 </a>
-
-                                @if (comp.Status == CompetitionStatus.Finished)
-                                {
-                                    <a asp-page="/Competitions/ResultsDetails"
-                                       asp-route-competitionId="@comp.Id"
-                                       class="btn btn-outline-secondary">
-                                        Résultats
-                                    </a>
-                                }
                             </div>
 
                         </div>

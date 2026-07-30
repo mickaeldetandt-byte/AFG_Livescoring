@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using AFG_Livescoring.Models;
 using AFG_Livescoring.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AFG_Livescoring.Pages.Competitions
 {
+    [AllowAnonymous]
     public class PublicModel : PageModel
     {
         private readonly AppDbContext _db;
@@ -40,10 +42,14 @@ namespace AFG_Livescoring.Pages.Competitions
             var competitions = await _db.Competitions
                 .Include(c => c.Course)
                 .AsNoTracking()
-                .Where(c => c.Visibility == CompetitionVisibility.Public && c.IsActive)
+                .Where(c =>
+                    c.Visibility == CompetitionVisibility.Public
+                    && c.IsActive
+                    && (c.Status == CompetitionStatus.InProgress
+                        || c.Status == CompetitionStatus.Finished))
                 .OrderByDescending(c => c.Date)
                 .ThenBy(c => c.Name)
-                .ToListAsync();
+                .ToListAsync(HttpContext.RequestAborted);
 
             var metricsByCompetition =
                 await CompetitionMetricsCalculator.CalculateAsync(
